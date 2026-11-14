@@ -34,9 +34,14 @@ The usual fix is to make agents read-only. That avoids the disaster but removes 
 Countersign gives agent writes the same safeguards a pull request gets.
 
 <div align="center">
-  <a href="VIDEO_URL_HERE">
-    <img src="https://img.shields.io/badge/▶️_Watch_Demo_Video-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Demo Video"/>
+  <a href="https://youtu.be/jsmCpsSsCRE">
+    <img width="640" src="https://img.youtube.com/vi/jsmCpsSsCRE/maxresdefault.jpg" alt="Countersign demo video: real Claude Code using the live Countersign MCP"/>
   </a>
+  <br />
+  <a href="https://youtu.be/jsmCpsSsCRE">
+    <img src="https://img.shields.io/badge/▶️_Watch_Demo_Video-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch the demo video on YouTube"/>
+  </a>
+  <p><sub>Real Claude Code session on the deployed MCP server, intercut with the approval inbox. Waits are sped up; nothing is mocked.</sub></p>
 </div>
 
 ---
@@ -322,7 +327,7 @@ claude mcp add --transport http countersign https://<host>/mcp --header "x-agent
 | Auth | GitHub OAuth, HMAC-signed session cookies | People; agents use show-once keys |
 | Hosting | Railway | Service and public URL |
 | Testing | `mongodb-memory-server` | End-to-end test on a throwaway replica set |
-| Demo video | Puppeteer, Claude Code (headless), ElevenLabs | Recording, real agent sessions, narration |
+| Demo video | Puppeteer, xterm.js, Claude Code | Recording the inbox and a real interactive Claude Code session |
 
 ---
 
