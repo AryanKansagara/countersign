@@ -20,7 +20,7 @@ export const proposalHash = (p: Omit<Proposal, "hash"> | Proposal) =>
 
 export const summarize = (p: Proposal) => ({
   proposalId: String(p._id), status: p.status, risk: p.risk, collection: p.collection, op: p.op,
-  matched: p.dryRun?.ids.length ?? 0, expectedCount: p.expectedCount, result: p.result ?? null, precedent: p.precedent ?? null,
+  matched: p.op === "insertOne" ? 1 : p.dryRun?.ids.length ?? 0, expectedCount: p.expectedCount, result: p.result ?? null, precedent: p.precedent ?? null,
 });
 
 // ---------- propose ----------
