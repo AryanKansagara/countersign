@@ -3,230 +3,515 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Countersign · Approval inbox</title>
+<title>Countersign · Inbox</title>
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --dim:#8b949e; --green:#3fb950; --red:#f85149; --amber:#d29922; --blue:#58a6ff; }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); }
-  header { display:flex; gap:12px; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); }
-  header h1 { font-size:16px; margin:0 12px 0 0; }
-  header .who { color:var(--dim); margin-left:auto; }
-  select, button, input { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:5px 10px; }
-  button { cursor:pointer; } button:hover { border-color:var(--dim); }
-  button.ok { background:#238636; border-color:#2ea043; } button.bad { background:#da3633; border-color:#f85149; }
-  main { display:grid; grid-template-columns: 380px 1fr 360px; height: calc(100vh - 53px); }
-  section { overflow:auto; border-right:1px solid var(--line); }
-  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); }
-  .item { padding:10px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
-  .item:hover, .item.sel { background:var(--panel); }
-  .item .t { font-weight:600; }
-  .item .m, .dim { color:var(--dim); font-size:12px; }
-  .badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 7px; border-radius:10px; border:1px solid currentColor; }
-  .pending { color:var(--amber); } .applied { color:var(--green); } .blocked, .failed, .rejected, .expired { color:var(--red); } .rolled_back { color:var(--blue); }
-  .detail { padding:16px 20px; }
-  .reasons li { color:var(--amber); }
-  table { border-collapse:collapse; width:100%; font:12px ui-monospace, SFMono-Regular, Menlo, monospace; margin:8px 0 16px; }
-  td, th { border:1px solid var(--line); padding:4px 8px; text-align:left; vertical-align:top; }
-  .del { background:rgba(248,81,73,.15); } .add { background:rgba(63,185,80,.15); }
-  .actions { display:flex; gap:8px; margin:12px 0; }
-  .ledger .e { padding:8px 14px; border-bottom:1px solid var(--line); font-size:12px; }
-  .ledger .e .ev { font-weight:600; }
-  .ledger .e.alarm { background:rgba(248,81,73,.12); }
-  .ledger .e .h { font-family:ui-monospace,monospace; color:var(--dim); }
-  .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--line); padding:8px 14px; border-radius:8px; display:none; }
-  code { font-family:ui-monospace,monospace; background:var(--panel); padding:1px 5px; border-radius:4px; }
+  :root {
+    --bg:#0e0a1f; --panel:#171230; --panel2:#1f1940; --line:#2e2654; --text:#f1edfb; --dim:#a69fc2;
+    --mint:#5cf2c3; --pink:#ff4fd8; --amber:#ffc65c; --red:#ff5d78; --blue:#7cb8ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 Inter, system-ui, sans-serif; }
+  a { color:var(--mint); }
+  button { font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--line); background:var(--panel2); color:var(--text); padding:8px 14px; }
+  button:hover { border-color:var(--dim); }
+  button:disabled { opacity:.5; cursor:wait; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, .card.click:focus-visible { outline:2px solid var(--mint); outline-offset:2px; }
+  button.primary { background:var(--mint); color:#0b0420; border-color:var(--mint); font-weight:600; }
+  button.danger { background:transparent; color:var(--red); border-color:var(--red); }
+  button.danger.solid { background:var(--red); color:#fff; }
+  input, select { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 12px; }
+  code { font-family:"Space Mono", monospace; font-size:.88em; background:var(--panel2); padding:1px 6px; border-radius:4px; word-break:break-all; }
+  .mono { font-family:"Space Mono", monospace; }
+  .dim { color:var(--dim); }
+  .small { font-size:13px; }
+
+  header { position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:18px; padding:12px 24px; background:rgba(14,10,31,.94); backdrop-filter:blur(6px); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .brand { font-family:"Space Mono", monospace; font-weight:700; letter-spacing:.06em; color:#fff; text-decoration:none; font-size:17px; text-shadow:0 0 12px rgba(255,79,216,.45); }
+  nav.tabs { display:flex; gap:4px; flex-wrap:wrap; }
+  [hidden] { display:none !important; }
+  nav.tabs button { background:transparent; border:none; color:var(--dim); padding:8px 12px; font-weight:500; }
+  nav.tabs button[aria-selected="true"] { color:#fff; background:var(--panel2); }
+  .count { display:inline-block; min-width:20px; padding:0 6px; margin-left:6px; border-radius:10px; background:var(--amber); color:#1a1200; font-size:12px; font-weight:700; text-align:center; }
+  .me { margin-left:auto; display:flex; align-items:center; gap:10px; }
+  .me .who { text-align:right; line-height:1.25; }
+  .me .who b { display:block; }
+
+  main { max-width:1200px; margin:0 auto; padding:24px; }
+  h1 { font-size:24px; margin:0 0 4px; }
+  h2 { font-size:17px; margin:22px 0 10px; }
+  .sub { color:var(--dim); margin:0 0 20px; max-width:760px; }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; margin-bottom:12px; }
+  .card.click { cursor:pointer; } .card.click:hover, .card.sel { border-color:var(--mint); }
+  .sentence { font-size:16px; }
+  .sentence b { color:#fff; }
+  .why { margin-top:6px; color:var(--dim); font-style:italic; }
+  .why::before { content:"“"; } .why::after { content:"”"; }
+  .meta { margin-top:8px; font-size:13px; color:var(--dim); }
+  .flags { margin:10px 0 0; padding:0; list-style:none; }
+  .flags li { color:var(--amber); font-size:14px; } .flags li::before { content:"⚠ "; }
+  .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; border:1px solid currentColor; white-space:nowrap; }
+  .s-pending { color:var(--amber); } .s-applied { color:var(--mint); } .s-blocked, .s-failed, .s-rejected, .s-expired { color:var(--red); } .s-rolled_back, .s-consumed, .s-approved, .s-claimed { color:var(--blue); }
+
+  .split { display:grid; grid-template-columns:minmax(300px, 420px) 1fr; gap:20px; align-items:start; }
+  @media (max-width: 900px) { .split { grid-template-columns:1fr; } .detail { position:static !important; } }
+  .detail { position:sticky; top:80px; max-height:calc(100vh - 100px); overflow:auto; }
+  .actions { display:flex; gap:10px; margin:16px 0 4px; flex-wrap:wrap; align-items:center; }
+  .facts { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:14px 0; font-size:14px; }
+  .facts dt { color:var(--dim); } .facts dd { margin:0; }
+
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--dim); font-weight:500; }
+  .old { color:var(--red); text-decoration:line-through; opacity:.85; }
+  .new { color:var(--mint); font-weight:600; }
+  .tablewrap { overflow:auto; border:1px solid var(--line); border-radius:10px; }
+
+  .empty { text-align:center; padding:50px 20px; color:var(--dim); }
+  .empty .big { font-size:36px; color:var(--mint); }
+
+  .tl { border-left:2px solid var(--line); margin-left:8px; padding-left:18px; }
+  .ev { position:relative; padding:8px 0; }
+  .ev::before { content:""; position:absolute; left:-25px; top:15px; width:10px; height:10px; border-radius:50%; background:var(--dim); }
+  .ev.good::before { background:var(--mint); } .ev.bad::before { background:var(--red); } .ev.warn::before { background:var(--amber); }
+  .ev .when { color:var(--dim); font-size:12px; }
+  .ev .hash { font-family:"Space Mono", monospace; font-size:11px; color:#6d6690; }
+
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .chips button { padding:5px 12px; border-radius:999px; font-size:13px; }
+  .chips button[aria-pressed="true"] { background:var(--mint); color:#0b0420; border-color:var(--mint); }
+
+  .welcome { max-width:580px; margin:7vh auto; text-align:center; }
+  .welcome .logo { font-family:"Space Mono", monospace; font-size:34px; font-weight:700; letter-spacing:.06em; text-shadow:0 0 18px rgba(255,79,216,.5); }
+  .gh { display:inline-flex; align-items:center; gap:10px; padding:12px 24px; font-size:16px; font-weight:600; background:#fff; color:#111; border:none; border-radius:10px; text-decoration:none; }
+  .gh svg { width:20px; height:20px; }
+  .or { margin:30px 0 12px; color:var(--dim); font-size:12px; letter-spacing:.14em; }
+  .demo-users { display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); }
+  .demo-users button { text-align:left; padding:12px 14px; }
+  .demo-users b { display:block; }
+
+  .keybox { font-family:"Space Mono", monospace; background:#06021a; border:1px solid var(--mint); color:var(--mint); padding:12px; border-radius:8px; word-break:break-all; margin:8px 0; }
+  .banner { background:rgba(255,93,120,.12); border:1px solid var(--red); color:#ffd0d8; border-radius:10px; padding:10px 14px; margin-bottom:16px; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:10px 16px; border-radius:10px; display:none; z-index:20; max-width:90vw; }
+  label.chk { display:inline-flex; gap:6px; align-items:center; }
 </style>
 </head>
 <body>
 <header>
-  <h1>✍️ Countersign</h1>
-  <select id="key" aria-label="Sign in as">
-    <option value="cs_human_maple_bob">Bob · approver · Maple Credit Union</option>
-    <option value="cs_human_maple_alice">Alice · support · Maple Credit Union</option>
-    <option value="cs_human_north_omar">Omar · approver · Northwind Wealth</option>
-  </select>
-  <a id="gh" href="/auth/github" style="display:none"><button>Sign in with GitHub</button></a>
-  <button id="keys" title="Request, approve and revoke agent keys">🔑 Keys</button>
-  <button id="kill" class="bad" title="Stop every agent in this tenant immediately">⏻ Kill switch</button>
-  <button id="verify" title="Re-hash the whole ledger">Verify ledger</button>
-  <input id="q" placeholder="Search audit in plain English…" style="width:280px" aria-label="Audit search">
-  <span class="who" id="who"></span>
+  <a class="brand" href="/">✍️ COUNTERSIGN</a>
+  <nav class="tabs" role="tablist" id="tabs" hidden>
+    <button role="tab" data-tab="inbox" aria-selected="true">Needs approval<span class="count" id="n-pending" hidden></span></button>
+    <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
+    <button role="tab" data-tab="keys" aria-selected="false">Keys &amp; access</button>
+    <button role="tab" data-tab="audit" aria-selected="false">Audit log</button>
+  </nav>
+  <div class="me" id="me"></div>
 </header>
-<main>
-  <section><h2>Proposals</h2><div id="list"></div></section>
-  <section><div class="detail" id="detail"><p class="dim">Select a proposal to review what the agent wants to change.</p></div></section>
-  <section class="ledger"><h2>Audit ledger · live</h2><div id="ledger"></div></section>
-</main>
-<div class="toast" id="toast"></div>
+<main id="view"><p class="dim">Loading…</p></main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script>
+// ================= state + helpers =================
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
-let GH = null; // GitHub session (cookie) when signed in as a member
-const key = () => $("key")?.value;
-let selected = location.hash.slice(1) || null;
-let killed = false;
+const BANKS = { maple: "Maple Credit Union", north: "Northwind Wealth" };
+const DEMO = {
+  bob:   { key: "cs_human_maple_bob",   name: "Bob",   role: "approver", bank: "Maple Credit Union" },
+  alice: { key: "cs_human_maple_alice", name: "Alice", role: "support",  bank: "Maple Credit Union" },
+  omar:  { key: "cs_human_north_omar",  name: "Omar",  role: "approver", bank: "Northwind Wealth" },
+};
+let ME = null, MODE = null, es = null;
+const qd = new URLSearchParams(location.search).get("demo");
+if (qd && DEMO[qd]) { localStorage.setItem("cs_demo_key", DEMO[qd].key); history.replaceState(null, "", location.pathname + location.hash); }
+let demoKey = localStorage.getItem("cs_demo_key");
+let tab = location.hash.startsWith("#tab=") ? location.hash.slice(5) : "inbox";
+let selected = location.hash.length > 1 && !location.hash.startsWith("#tab=") ? location.hash.slice(1) : null;
+let filter = "all";
+const isApprover = () => ["approver", "admin"].includes(ME?.role);
 
+const authHeaders = () => (MODE === "demo" && demoKey ? { "x-human-key": demoKey } : {});
 async function api(path, opts = {}) {
-  const r = await fetch("/api/" + path, { ...opts, headers: { ...(GH ? {} : { "x-human-key": key() }), "content-type": "application/json" } });
-  const j = await r.json();
+  const r = await fetch("/api/" + path, { ...opts, headers: { ...authHeaders(), "content-type": "application/json" } });
+  const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.denied || j.error || r.statusText);
   return j;
 }
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4000); }
-const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; return s < 60 ? `${s|0}s ago` : s < 3600 ? `${(s/60)|0}m ago` : new Date(d).toLocaleTimeString(); };
+const post = (path, body = {}) => api(path, { method: "POST", body: JSON.stringify(body) });
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = "none"), 4500); }
+const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)} min ago` : s < 86400 ? `${Math.floor(s / 3600)} h ago` : new Date(d).toLocaleString(); };
 
-async function loadList() {
-  const me = await api("me");
-  $("who").textContent = `${me.id} · ${me.role}`;
-  const ps = await api("proposals");
-  ps.sort((a, b) => (b.status === "pending") - (a.status === "pending") || new Date(b.createdAt) - new Date(a.createdAt));
-  $("list").innerHTML = ps.map((p) => `
-    <div class="item ${p._id === selected ? "sel" : ""}" data-id="${p._id}">
-      <div><span class="badge ${p.status}">${p.status}</span> <span class="t">${esc(p.op)} · ${esc(p.collection)}</span> <span class="dim">${p.matched || p.expectedCount} rec</span></div>
-      <div class="m">${esc(p.reason)}</div>
-      <div class="m">${esc(p.agentId)} for ${esc(p.onBehalfOf)} · ${ago(p.createdAt)}</div>
-    </div>`).join("") || `<p class="dim" style="padding:16px">No proposals yet.</p>`;
-  document.querySelectorAll(".item").forEach((el) => el.onclick = () => { selected = el.dataset.id; location.hash = selected; loadList(); loadDetail(); });
-  const k = await api("killswitch");
-  killed = !!k?.tenants?.includes(me.tenantId);
-  $("kill").textContent = killed ? "⏻ Agents STOPPED · resume" : "⏻ Kill switch";
+// ================= plain-English rendering =================
+function person(id) {
+  if (!id) return "someone";
+  if (id === "policy:auto") return "policy (automatic)";
+  if (["gateway", "system", "watchdog"].includes(id)) return "Countersign";
+  const parts = String(id).split(":");
+  if (parts[0] === "agent") return parts.slice(1).join(":").replace(/^(maple|north)[-:]/, "");
+  if (parts[0] === "human" && parts[1] === "gh") return "@" + parts[2];
+  if (parts[0] === "human") { const n = parts[parts.length - 1]; return n[0].toUpperCase() + n.slice(1); }
+  if (parts[0] === "gh") return "@" + parts[1];
+  return id;
+}
+const verb = (op) => op?.startsWith("delete") ? "delete" : op === "insertOne" ? "add" : "update";
+const STATUS = { pending: "Needs approval", applied: "Applied", blocked: "Blocked", failed: "Stopped", rejected: "Rejected", rolled_back: "Undone", expired: "Expired", approved: "Approved", consumed: "Running", claimed: "Collected" };
+const pill = (s) => `<span class="pill s-${s}">${STATUS[s] ?? esc(s)}</span>`;
+const val = (v) => typeof v === "string" ? `"${esc(v)}"` : esc(JSON.stringify(v));
+
+function changeText(p) {
+  if (p.op === "insertOne") return Object.entries(p.document ?? {}).map(([k, v]) => `${esc(k)} = ${val(v)}`).join(", ");
+  if (p.op?.startsWith("delete")) return "";
+  const u = p.update ?? {}, out = [];
+  for (const [k, v] of Object.entries(u.$set ?? {})) out.push(`set <b>${esc(k)}</b> → ${val(v)}`);
+  for (const [k, v] of Object.entries(u.$inc ?? {})) out.push(`${v >= 0 ? "add" : "subtract"} ${Math.abs(v)} ${v >= 0 ? "to" : "from"} <b>${esc(k)}</b>`);
+  for (const k of Object.keys(u.$unset ?? {})) out.push(`clear <b>${esc(k)}</b>`);
+  return out.join(", ");
+}
+function sentence(p) {
+  const n = p.op === "insertOne" ? 1 : (p.matched || p.expectedCount);
+  const what = p.op === "insertOne" ? `add a record to <b>${esc(p.collection)}</b>` : `${verb(p.op)} <b>${n} record${n === 1 ? "" : "s"}</b> in <b>${esc(p.collection)}</b>`;
+  const change = changeText(p);
+  return `<b>${esc(person(p.agentId))}</b> <span class="dim">acting for</span> <b>${esc(person(p.onBehalfOf))}</b> wants to ${what}${change ? `: ${change}` : ""}`;
 }
 
-function diffTable(diff) {
-  if (!diff.length) return "";
-  const keys = [...new Set(diff.flatMap((d) => Object.keys({ ...(d.before || {}), ...(d.after || {}) })))].filter((k) => k !== "_id");
-  const changed = new Set(keys.filter((k) => diff.some((d) => JSON.stringify(d.before?.[k]) !== JSON.stringify(d.after?.[k]))));
-  const show = keys.filter((k) => changed.has(k) || ["name", "customerNo", "company", "status"].includes(k)).slice(0, 8);
-  const cell = (d, k) => {
-    if (!changed.has(k)) return `<td>${esc(JSON.stringify(d.before?.[k] ?? d.after?.[k]))}</td>`;
-    return `<td>${d.before ? `<div class="del">− ${esc(JSON.stringify(d.before[k]))}</div>` : ""}${d.after ? `<div class="add">+ ${esc(JSON.stringify(d.after[k]))}</div>` : `<div class="del">deleted</div>`}</td>`;
-  };
-  return `<table><tr>${show.map((k) => `<th>${esc(k)}</th>`).join("")}</tr>${diff.map((d) => `<tr>${show.map((k) => cell(d, k)).join("")}</tr>`).join("")}</table>`;
+function eventText(e) {
+  const d = e.data ?? {}, who = esc(person(e.actor));
+  switch (e.event) {
+    case "proposal.created": return [`${who} proposed to ${verb(d.op)} ${d.op === "insertOne" ? "a" : d.matched} record(s) in ${esc(d.collection)} for ${esc(person(d.onBehalfOf))}`, d.risk?.tier === "approval" ? "warn" : ""];
+    case "proposal.blocked": return [`Blocked ${who}: ${esc(d.risk?.reasons?.[0] ?? "")}`, "bad"];
+    case "proposal.auto_approved": return [`Approved automatically: within policy`, "good"];
+    case "proposal.approved": return [`${who} approved the change`, "good"];
+    case "proposal.applied": return [`Applied and verified (${esc(Object.entries(d.result ?? {}).filter(([k]) => k !== "id").map(([k, v]) => `${v} ${k}`).join(", "))})`, "good"];
+    case "proposal.failed": return [`Stopped before anything changed: ${esc(d.why)}`, "bad"];
+    case "proposal.expired": return [`Approval expired: ${esc(d.why)}`, "bad"];
+    case "proposal.rejected": return [`${who} rejected the change`, "bad"];
+    case "proposal.rolled_back": return [`${who} undid the change`, "warn"];
+    case "data.read": return [`${who} read ${d.returned} ${esc(d.collection)} record(s) for ${esc(person(d.onBehalfOf))}${d.unmasked?.length ? ` (unmasked: ${esc(d.unmasked.join(", "))})` : ""}`, ""];
+    case "alarm.canary": return [`🚨 Trap record touched by ${esc(person(d.agent))}: agent frozen`, "bad"];
+    case "alarm.ungoverned_write": return [`🚨 Someone changed ${esc(d.collection)} directly, bypassing Countersign`, "bad"];
+    case "killswitch.on": return [`${who} pressed the emergency stop`, "bad"];
+    case "killswitch.off": return [`${who} resumed agents`, "good"];
+    case "grant.unmask": return [`${who} unmasked ${esc(d.field)} for ${d.minutes} min: ${esc(d.reason)}`, "warn"];
+    case "key.requested": return [`${who} requested ${d.kind === "agent" ? `an agent key "${esc(d.name)}"` : `access to ${esc(BANKS[d.tenantId] ?? d.tenantId)} as ${esc(d.role)}`}`, ""];
+    case "key.issued": return [`${who} approved ${d.kind === "agent" ? "agent key" : "access for"} ${esc(person(d.identity))}`, "good"];
+    case "key.claimed": return [`${who} collected their key (shown once)`, ""];
+    case "key.rejected": return [`${who} rejected a key request`, "bad"];
+    case "key.revoked": return [`${who} revoked ${esc(person(d.identity))}`, "warn"];
+    case "auth.github_login": return [`${who} signed in with GitHub`, ""];
+    case "identity.bootstrapped": return [`@${esc(d.github)} became an approver (admin list)`, "good"];
+    case "system.seeded": return [`Demo data loaded`, ""];
+    default: return [`${esc(e.event)} by ${who}`, ""];
+  }
 }
 
-async function loadDetail() {
-  if (!selected) return;
-  let d;
-  try { d = await api("proposals/" + selected); } catch (e) { $("detail").innerHTML = `<p class="dim">${esc(e.message)}</p>`; return; }
-  const p = d.proposal;
-  $("detail").innerHTML = `
-    <h3 style="margin-top:0"><span class="badge ${p.status}">${p.status}</span> ${esc(p.op)} on <code>${esc(p.collection)}</code></h3>
-    <p><b>Why:</b> ${esc(p.reason)}</p>
-    <p class="dim">Agent <code>${esc(p.agentId)}</code> acting for <code>${esc(p.onBehalfOf)}</code> · policy v${p.policyVersion} · expires ${new Date(p.expiresAt).toLocaleTimeString()}</p>
-    ${p.precedent ? `<p class="dim">Closest approved precedent (Vector Search): “${esc(p.precedent.reason)}” · similarity ${(p.precedent.score * 100).toFixed(0)}%</p>` : ""}
-$1 filter matches <b>${p.dryRun.matched}</b> record(s); agent expected <b>${p.expectedCount}</b>.</p>
-    ${p.risk.reasons.length ? `<p><b>Flagged because:</b></p><ul class="reasons">${p.risk.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : `<p class="dim">Within auto-approve policy.</p>`}
-    <details><summary class="dim">Exact request</summary><table><tr><td>filter</td><td>${esc(JSON.stringify(p.filter))}</td></tr><tr><td>update</td><td>${esc(JSON.stringify(p.update ?? p.document))}</td></tr><tr><td>approval hash</td><td>${esc(p.hash)}</td></tr></table></details>
-    <div class="actions">
-      ${p.status === "pending" ? `<button class="ok" data-a="approve">Approve & apply</button><button class="bad" data-a="reject">Reject</button>` : ""}
-      ${p.status === "applied" ? `<button data-a="rollback">↶ Roll back</button>` : ""}
+// ================= boot / sign-in =================
+async function boot() {
+  const auth = await fetch("/auth/me").then((r) => r.json()).catch(() => ({}));
+  if (auth.signedIn && auth.id) { MODE = "github"; ME = { id: auth.id, role: auth.role, tenantId: auth.tenantId, gh: auth.gh }; }
+  else if (auth.signedIn) return renderRequestAccess(auth);
+  else if (demoKey) {
+    MODE = "demo";
+    try { ME = await api("me"); } catch { localStorage.removeItem("cs_demo_key"); demoKey = null; MODE = null; }
+  }
+  if (!ME) return renderWelcome(auth);
+  renderMe(); $("tabs").hidden = false; listen(); show(tab);
+}
+
+const GH_ICON = `<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
+
+function renderWelcome(auth) {
+  $("me").innerHTML = "";
+  $("view").innerHTML = `<div class="welcome">
+    <div class="logo">COUNTERSIGN</div>
+    <p class="sub" style="margin:8px auto 28px">Review, approve and undo every change your AI agents make to MongoDB.</p>
+    ${auth.github ? `<a class="gh" href="/auth/github">${GH_ICON} Sign in with GitHub</a>
+      <p class="dim small" style="margin-top:10px">New here? Sign in, then request access. An approver lets you in.</p>`
+      : `<p class="dim">GitHub sign-in isn't configured on this server.</p>`}
+    <div class="or">— OR EXPLORE THE DEMO AS —</div>
+    <div class="demo-users">
+      ${Object.entries(DEMO).map(([k, u]) => `<button data-demo="${k}"><b>${u.name} · ${u.role}</b><span class="dim small">${u.bank}</span></button>`).join("")}
     </div>
-    ${p.result ? `<p><b>Result:</b> <code>${esc(JSON.stringify(p.result))}</code></p>` : ""}
-    <h4>Change preview</h4>${diffTable(d.diff)}
-    <h4>History</h4>${d.ledger.map((e) => `<div class="dim">#${e.seq} ${esc(e.event)} by ${esc(e.actor)} · ${new Date(e.at).toLocaleTimeString()}</div>`).join("")}`;
-  document.querySelectorAll("[data-a]").forEach((b) => b.onclick = async () => {
-    try { const r = await api(`proposals/${selected}/${b.dataset.a}`, { method: "POST", body: "{}" }); toast(`${b.dataset.a}: ${r.status}${r.result?.error ? " · " + r.result.error : ""}`); }
-    catch (e) { toast("⛔ " + e.message); }
-    loadList(); loadDetail();
-  });
+    <p class="dim small" style="margin-top:16px">Demo users share fixed keys so anyone can try it. Real users sign in with GitHub.</p>
+  </div>`;
+  document.querySelectorAll("[data-demo]").forEach((b) => b.onclick = () => { localStorage.setItem("cs_demo_key", DEMO[b.dataset.demo].key); location.hash = ""; location.reload(); });
 }
 
-function ledgerRow(e) {
-  const alarm = e.event.startsWith("alarm") || e.event.endsWith("blocked") || e.event.endsWith("failed");
-  return `<div class="e ${alarm ? "alarm" : ""}"><span class="ev">${esc(e.event)}</span> <span class="dim">#${e.seq} · ${new Date(e.at).toLocaleTimeString()}</span><br>${esc(e.actor)}${e.data?.reason ? " · " + esc(e.data.reason) : ""}${e.data?.why ? " · " + esc(e.data.why) : ""}<br><span class="h">${e.hash.slice(0, 16)}… ← ${e.prevHash.slice(0, 8)}…</span></div>`;
+function renderRequestAccess(auth) {
+  $("me").innerHTML = `<div class="who"><b>@${esc(auth.gh)}</b><span class="dim small">no access yet</span></div><a href="/auth/logout"><button>Sign out</button></a>`;
+  $("view").innerHTML = `<div class="welcome" style="text-align:left">
+    <h1>Request access</h1>
+    <p class="sub">You're signed in as <b>@${esc(auth.gh)}</b>. Pick where you work and what you need. A different person with approver rights must accept it. Nobody can grant themselves access.</p>
+    <div class="card">
+      <label class="small dim" for="rt">Bank</label>
+      <select id="rt" style="width:100%;margin:4px 0 12px">${Object.entries(BANKS).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select>
+      <label class="small dim" for="rr">Role</label>
+      <select id="rr" style="width:100%;margin:4px 0 12px"><option value="support">Support: your agents can propose changes</option><option value="approver">Approver: you approve other people's changes</option></select>
+      <label class="small dim" for="rw">Why do you need access?</label>
+      <input id="rw" style="width:100%;margin:4px 0 14px" placeholder="e.g. I'm on the support team">
+      <button class="primary" id="rgo">Send request</button>
+    </div>
+    <h2>Your requests</h2><div id="mine"></div>
+    <p class="dim small">This page lets you in automatically as soon as you're approved.</p>
+  </div>`;
+  $("rgo").onclick = async () => {
+    const r = await fetch("/api/requests/membership", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenantId: $("rt").value, role: $("rr").value, reason: $("rw").value }) }).then((r) => r.json());
+    toast(r.denied || "Request sent. An approver will review it.");
+    renderMine();
+  };
+  renderMine();
+  setInterval(async () => { const m = await fetch("/auth/me").then((r) => r.json()); if (m.id) location.reload(); }, 5000);
 }
-async function loadLedger() { $("ledger").innerHTML = (await api("ledger?limit=60")).map(ledgerRow).join(""); }
 
-$("q").onkeydown = async (ev) => {
-  if (ev.key !== "Enter" || !ev.target.value.trim()) return;
-  const hits = await api("search?q=" + encodeURIComponent(ev.target.value));
-  $("detail").innerHTML = `<h3 style="margin-top:0">Audit search: “${esc(ev.target.value)}”</h3><p class="dim">Atlas Vector Search over every proposal in this tenant.</p>` + (hits.map((h) => `<div class="item" data-id="${h._id}"><span class="badge ${h.status}">${h.status}</span> <b>${esc(h.op)} · ${esc(h.collection)}</b> <span class="dim">match ${(h.score * 100).toFixed(0)}%</span><div class="m">${esc(h.reason)}</div><div class="m">${esc(h.agentId)} for ${esc(h.onBehalfOf)}${h.approvedBy ? " · approved by " + esc(h.approvedBy) : ""} · ${ago(h.createdAt)}</div></div>`).join("") || `<p class="dim">No matches.</p>`);
-  document.querySelectorAll("#detail .item").forEach((el) => el.onclick = () => { selected = el.dataset.id; location.hash = selected; loadList(); loadDetail(); });
-};
-$1async () => { const v = await api("ledger/verify"); toast(v.ok ? `✅ Ledger intact · ${v.entries} entries chained` : `⛔ Tampering detected at entry #${v.brokenAt}: ${v.why}`); };
-$("kill").onclick = async () => { try { await api("killswitch", { method: "POST", body: JSON.stringify({ on: !killed }) }); toast(killed ? "Agents resumed" : "All agents in this tenant stopped"); loadList(); } catch (e) { toast("⛔ " + e.message); } };
-$("key").onchange = () => { selected = null; $("detail").innerHTML = ""; refresh(); };
+function renderMe() {
+  const name = MODE === "github" ? "@" + ME.gh : person(ME.id);
+  $("me").innerHTML = `
+    ${isApprover() ? `<button class="danger" id="kill" title="Immediately stop every agent in your bank">⏻ Emergency stop</button>` : ""}
+    <div class="who"><b>${esc(name)}</b><span class="dim small">${esc(ME.role)} · ${esc(BANKS[ME.tenantId] ?? ME.tenantId)}${MODE === "demo" ? " · demo" : ""}</span></div>
+    ${MODE === "demo" ? `<button id="switch">Switch user</button>` : `<a href="/auth/logout"><button>Sign out</button></a>`}`;
+  if ($("switch")) $("switch").onclick = () => { localStorage.removeItem("cs_demo_key"); location.hash = ""; location.reload(); };
+  if (isApprover()) refreshKill();
+}
 
-let es;
+async function refreshKill() {
+  const k = await api("killswitch").catch(() => null);
+  const on = !!k?.tenants?.includes(ME.tenantId);
+  const b = $("kill");
+  if (b) {
+    b.textContent = on ? "▶ Resume agents" : "⏻ Emergency stop";
+    b.classList.toggle("solid", on);
+    b.onclick = async () => {
+      if (!on && !confirm("Stop every agent in your bank right now? New requests will be refused until you resume.")) return;
+      try { await post("killswitch", { on: !on }); toast(on ? "Agents resumed" : "All agents stopped"); } catch (e) { toast("⛔ " + e.message); }
+      refreshKill();
+    };
+  }
+  if ($("stopbanner")) $("stopbanner").hidden = !on;
+}
+
 function listen() {
   es?.close();
-  es = new EventSource(GH ? "/api/events" : "/api/events?key=" + encodeURIComponent(key()));
-  es.addEventListener("ledger", (m) => { const e = JSON.parse(m.data); $("ledger").insertAdjacentHTML("afterbegin", ledgerRow(e)); loadList(); if (selected && String(e.proposalId) === selected) loadDetail(); });
+  es = new EventSource(MODE === "demo" ? "/api/events?key=" + encodeURIComponent(demoKey) : "/api/events");
+  // Live: refresh whatever's on screen when anything lands in the ledger (except the Keys form you may be typing in).
+  es.addEventListener("ledger", () => { clearTimeout(listen._t); listen._t = setTimeout(() => show(tab, true), 400); });
 }
 
-function refresh() { if (NOACCESS) return; listen(); loadList().catch((e) => toast(e.message)); loadLedger().catch(() => {}); loadDetail(); }
-// ---- GitHub sign-in + keys ----
-let NOACCESS = false;
-const opt = (v, label) => `<option value="${v}">${label}</option>`;
-async function boot() {
-  const me = await fetch("/auth/me").then((r) => r.json());
-  if (me.github && !me.signedIn) $("gh").style.display = "";
-  if (me.signedIn) {
-    $("gh").style.display = "none";
-    $("key").outerHTML = `<span class="dim">@${esc(me.gh)}</span> <a href="/auth/logout" class="dim">sign out</a>`;
-    if (me.id) GH = me;
-    else {
-      NOACCESS = true;
-      $("detail").innerHTML = `<h3 style="margin-top:0">Request access</h3>
-        <p class="dim">Signed in as @${esc(me.gh)}. An approver must let you in; nobody can grant themselves access.</p>
-        <p><select id="rt">${opt("maple", "Maple Credit Union")}${opt("north", "Northwind Wealth")}</select>
-        <select id="rr">${opt("support", "support")}${opt("approver", "approver")}</select></p>
-        <p><input id="rw" placeholder="Why do you need access?" style="width:100%"></p>
-        <button class="ok" id="rgo">Request access</button><div id="mine"></div>`;
-      $("rgo").onclick = async () => {
-        const r = await fetch("/api/requests/membership", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenantId: $("rt").value, role: $("rr").value, reason: $("rw").value }) }).then((r) => r.json());
-        toast(r.denied || "Requested. An approver will review it."); mine();
-      };
-      mine();
-      setInterval(async () => { const m = await fetch("/auth/me").then((r) => r.json()); if (m.id) location.reload(); }, 5000);
-    }
-  }
-  refresh();
+// ================= tabs =================
+document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => { selected = null; show(b.dataset.tab); });
+async function show(t, live) {
+  tab = t;
+  if (!live) history.replaceState(null, "", selected ? "#" + selected : "#tab=" + t);
+  document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === t));
+  updateCount();
+  try {
+    if (t === "inbox") await viewInbox();
+    if (t === "activity") await viewActivity();
+    if (t === "keys" && !live) await viewKeys();
+    if (t === "audit") await viewAudit();
+  } catch (e) { toast("⛔ " + e.message); }
+}
+async function updateCount() {
+  const ps = await api("proposals").catch(() => []);
+  const n = ps.filter((p) => p.status === "pending").length;
+  $("n-pending").hidden = !n; $("n-pending").textContent = n;
 }
 
-async function mine() {
-  const rs = await fetch("/api/requests/mine", { headers: GH ? {} : { "x-human-key": key() } }).then((r) => r.json());
-  const box = $("mine"); if (!box || !Array.isArray(rs)) return;
-  box.innerHTML = `<h4>My requests</h4>` + (rs.map((r) => `<div class="item"><span class="badge ${r.status === "approved" || r.status === "claimed" ? "applied" : r.status}">${r.status}</span> <b>${r.kind === "agent" ? "agent key · " + esc(r.name) : "access · " + esc(r.tenantId) + " " + esc(r.role)}</b>
-    <div class="m">${esc(r.reason)}${r.scopes ? " · scopes: " + r.scopes.map(esc).join(", ") : ""}${r.decidedBy ? " · by " + esc(r.decidedBy) : ""}</div>
-    ${r.status === "approved" ? `<button data-claim="${r._id}">Reveal key (shown once)</button>` : ""}</div>`).join("") || `<p class="dim">None yet.</p>`);
-  box.querySelectorAll("[data-claim]").forEach((b) => b.onclick = async () => {
-    const k = await fetch(`/api/requests/${b.dataset.claim}/claim`, { method: "POST", headers: { "content-type": "application/json", ...(GH ? {} : { "x-human-key": key() }) } }).then((r) => r.json());
-    if (k.denied) return toast(k.denied);
-    b.outerHTML = k.kind === "agent"
-      ? `<p><b>Agent key</b> (copy now; it won't be shown again):</p><pre style="white-space:pre-wrap">${esc(k.key)}</pre>
-         <p class="dim">MCP config: URL <code>${location.origin}/mcp</code>, headers <code>x-agent-key: ${esc(k.key)}</code> and <code>x-human-key: &lt;your human key&gt;</code></p>`
-      : `<p><b>Your human key</b> (for MCP clients; copy now):</p><pre style="white-space:pre-wrap">${esc(k.key)}</pre>`;
+// ----- Needs approval -----
+async function viewInbox() {
+  const ps = (await api("proposals")).filter((p) => p.status === "pending");
+  if (!selected || !ps.some((p) => String(p._id) === selected)) selected = ps.length ? String(ps[0]._id) : null;
+  $("view").innerHTML = `
+    <div class="banner" id="stopbanner" hidden>⏻ Emergency stop is on. Every agent in your bank is refused until an approver resumes them.</div>
+    <h1>Needs approval</h1>
+    <p class="sub">${isApprover() ? "Agents asked for these changes. Nothing happens until you approve. Small, routine changes are approved automatically by policy and show up under Activity." : "Changes your agents asked for. An approver must sign off; you can't approve your own."}</p>
+    ${ps.length ? `<div class="split"><div>${ps.map((p) => cardHtml(p)).join("")}</div><div class="detail" id="detail"></div></div>`
+      : `<div class="card empty"><div class="big">✓</div><p><b>All clear.</b> Nothing is waiting for approval.</p><p class="small">Try it: ask a connected agent to change more than 5 records, or to refund more than $100.</p></div>`}`;
+  bindCards();
+  if (selected) await renderDetail(selected);
+  if (isApprover()) refreshKill();
+}
+function cardHtml(p, extra = "") {
+  return `<div class="card click ${String(p._id) === selected ? "sel" : ""}" data-id="${p._id}" tabindex="0" role="button">
+    <div class="row" style="justify-content:space-between">${pill(p.status)}<span class="dim small">${extra}${ago(p.createdAt)}</span></div>
+    <div class="sentence" style="margin-top:8px">${sentence(p)}</div>
+    ${p.reason ? `<div class="why">${esc(p.reason)}</div>` : ""}
+    ${p.risk?.reasons?.length ? `<ul class="flags">${p.risk.reasons.slice(0, 2).map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+  </div>`;
+}
+function bindCards() {
+  document.querySelectorAll(".card.click").forEach((el) => {
+    const open = () => { selected = el.dataset.id; history.replaceState(null, "", "#" + selected); document.querySelectorAll(".card.click").forEach((c) => c.classList.toggle("sel", c === el)); renderDetail(selected); };
+    el.onclick = open; el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
   });
 }
 
-async function keysView() {
-  const me = await api("me");
-  const approver = ["approver", "admin"].includes(me.role);
-  $("detail").innerHTML = `<h3 style="margin-top:0">🔑 Keys</h3>
-    <h4>Request an agent key</h4>
-    <p class="dim">The agent acts on your behalf and can only touch what you tick (and what your role allows). A different approver must sign off.</p>
-    <p><input id="kn" placeholder="agent name, e.g. report-bot"> ${["customers", "leads", "transactions"].map((c) => `<label><input type="checkbox" value="${c}" class="ks"> ${c}</label>`).join(" ")}</p>
-    <p><input id="kw" placeholder="Why does this agent need access?" style="width:100%"></p>
-    <button class="ok" id="kgo">Request key</button>
-    <div id="mine"></div>
-    ${approver ? `<h4>Waiting for your approval</h4><div id="pend"></div><h4>Identities in ${esc(me.tenantId)}</h4><div id="ids"></div>` : ""}`;
+async function renderDetail(id) {
+  const box = $("detail"); if (!box || !id) return;
+  let d; try { d = await api("proposals/" + id); } catch (e) { box.innerHTML = `<div class="card dim">${esc(e.message)}</div>`; return; }
+  const p = d.proposal, mine = p.onBehalfOf === ME.id;
+  box.innerHTML = `<div class="card">
+    <div class="row" style="justify-content:space-between">${pill(p.status)}<span class="dim small">${new Date(p.createdAt).toLocaleString()}</span></div>
+    <div class="sentence" style="margin-top:10px">${sentence({ ...p, matched: p.dryRun.matched })}</div>
+    ${p.reason ? `<div class="why">${esc(p.reason)}</div>` : ""}
+    ${p.risk.reasons.length ? `<h2>${p.status === "blocked" ? "Why it was blocked" : "Why it needs a human"}</h2><ul class="flags">${p.risk.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+    <dl class="facts">
+      <dt>Dry run</dt><dd>${p.op === "insertOne" ? "adds 1 new record" : `filter matches <b>${p.dryRun.matched}</b> record(s); the agent said <b>${p.expectedCount}</b> ${p.dryRun.matched === p.expectedCount ? "✓" : "✗"}`}</dd>
+      ${p.precedent ? `<dt>Most similar past change</dt><dd>“${esc(p.precedent.reason)}” <span class="dim">(${Math.round(p.precedent.score * 100)}% similar · Atlas Vector Search)</span></dd>` : ""}
+      ${p.status === "pending" ? `<dt>Approval expires</dt><dd>${new Date(p.expiresAt).toLocaleTimeString()}</dd>` : ""}
+      ${p.approvedBy ? `<dt>Decided by</dt><dd>${esc(person(p.approvedBy))}</dd>` : ""}
+      ${p.result ? `<dt>Result</dt><dd>${esc(p.result.error ?? Object.entries(p.result).filter(([k]) => k !== "id").map(([k, v]) => `${v} ${k}`).join(", "))}</dd>` : ""}
+    </dl>
+    <div class="actions">
+      ${p.status === "pending" && isApprover() && !mine ? `<button class="primary" data-act="approve">✓ Approve &amp; apply</button><button class="danger" data-act="reject">✗ Reject</button>` : ""}
+      ${p.status === "pending" && (mine || !isApprover()) ? `<span class="dim small">${mine ? "You requested this, so someone else has to approve it." : "Only approvers can approve."}</span>` : ""}
+      ${p.status === "applied" && isApprover() ? `<button data-act="rollback">↶ Undo this change</button>` : ""}
+    </div>
+    <h2>${p.status === "pending" ? "What will change" : "What it touched"}</h2>
+    ${diffTable(d.diff, p)}
+    <h2>History</h2>
+    <div class="tl">${d.ledger.map((e) => { const [t, k] = eventText(e); return `<div class="ev ${k}"><div>${t}</div><div class="when">${new Date(e.at).toLocaleTimeString()}</div></div>`; }).join("")}</div>
+    <details style="margin-top:14px"><summary class="dim small">Technical details</summary>
+      <dl class="facts small"><dt>filter</dt><dd><code>${esc(JSON.stringify(p.filter))}</code></dd><dt>update</dt><dd><code>${esc(JSON.stringify(p.update ?? p.document))}</code></dd><dt>approval hash</dt><dd><code>${esc(p.hash)}</code></dd><dt>policy</dt><dd>v${p.policyVersion}</dd></dl>
+    </details>
+  </div>`;
+  box.querySelectorAll("[data-act]").forEach((b) => b.onclick = async () => {
+    if (b.dataset.act === "rollback" && !confirm("Restore every record this change touched to how it was before?")) return;
+    box.querySelectorAll("[data-act]").forEach((x) => (x.disabled = true));
+    try {
+      const r = await post(`proposals/${id}/${b.dataset.act}`);
+      toast(r.status === "applied" ? "✓ Approved, applied and verified" : r.status === "rolled_back" ? "↶ Change undone" : r.status === "rejected" ? "Rejected" : `${STATUS[r.status] ?? r.status}${r.result?.error ? ": " + r.result.error : ""}`);
+    } catch (e) { toast("⛔ " + e.message); }
+    selected = id; show(tab);
+  });
+}
+
+function diffTable(diff, p) {
+  if (!diff.length) return `<p class="dim small">Nothing to preview.</p>`;
+  const keys = [...new Set(diff.flatMap((d) => Object.keys({ ...(d.before || {}), ...(d.after || {}) })))].filter((k) => k !== "_id");
+  const changed = new Set(keys.filter((k) => diff.some((d) => JSON.stringify(d.before?.[k]) !== JSON.stringify(d.after?.[k]))));
+  const ident = ["customerNo", "name", "company"].filter((k) => keys.includes(k));
+  const cols = [...ident, ...keys.filter((k) => changed.has(k) && !ident.includes(k))].slice(0, 6);
+  const show = (v) => typeof v === "string" ? esc(v) : esc(JSON.stringify(v));
+  const cell = (d, k) => {
+    if (!changed.has(k)) return `<td>${show(d.before?.[k] ?? d.after?.[k] ?? "")}</td>`;
+    if (!d.after) return `<td><span class="old">${show(d.before?.[k])}</span></td>`;
+    if (!d.before) return `<td><span class="new">${show(d.after[k])}</span></td>`;
+    return `<td><span class="old">${show(d.before[k])}</span> → <span class="new">${show(d.after[k])}</span></td>`;
+  };
+  const note = p.op?.startsWith("delete") ? `<p class="small" style="color:var(--red)">These record(s) will be deleted. A copy is kept so it can be undone.</p>` : "";
+  return `${note}<div class="tablewrap"><table><tr>${cols.map((k) => `<th>${esc(k)}</th>`).join("")}</tr>${diff.map((d) => `<tr>${cols.map((k) => cell(d, k)).join("")}</tr>`).join("")}</table></div>
+    ${diff.length >= 25 ? `<p class="dim small">Showing the first 25 records.</p>` : ""}`;
+}
+
+// ----- Activity -----
+async function viewActivity() {
+  const ps = await api("proposals");
+  const groups = { all: () => true, applied: (p) => p.status === "applied", blocked: (p) => ["blocked", "failed", "rejected", "expired"].includes(p.status), rolled_back: (p) => p.status === "rolled_back", pending: (p) => p.status === "pending" };
+  const names = { all: "All", applied: "Applied", blocked: "Blocked / stopped", rolled_back: "Undone", pending: "Waiting" };
+  const q = $("q")?.value ?? "";
+  $("view").innerHTML = `
+    <h1>Activity</h1>
+    <p class="sub">Everything agents have asked to change, and what happened to it.</p>
+    <div class="row" style="justify-content:space-between;margin-bottom:16px">
+      <div class="row chips">${Object.keys(groups).map((g) => `<button aria-pressed="${g === filter}" data-f="${g}">${names[g]} · ${ps.filter(groups[g]).length}</button>`).join("")}</div>
+      <form id="sf" class="row"><input id="q" value="${esc(q)}" placeholder="Search in plain English, e.g. “refunds”" style="width:300px" aria-label="Search activity"><button>Search</button></form>
+    </div>
+    <div class="split"><div id="list">${ps.filter(groups[filter]).map((p) => cardHtml(p)).join("") || `<div class="card empty">Nothing here yet.</div>`}</div><div class="detail" id="detail"><div class="card dim">Select an item to see what it changed and its full history.</div></div></div>`;
+  document.querySelectorAll("[data-f]").forEach((b) => b.onclick = () => { filter = b.dataset.f; selected = null; viewActivity(); });
+  $("sf").onsubmit = async (e) => {
+    e.preventDefault();
+    const text = $("q").value.trim(); if (!text) return viewActivity();
+    const hits = await api("search?q=" + encodeURIComponent(text));
+    $("list").innerHTML = `<p class="dim small">Closest matches for “${esc(text)}” (Atlas Vector Search)</p>` + (hits.map((h) => cardHtml({ ...h, matched: 0 }, `${Math.round(h.score * 100)}% match · `)).join("") || `<div class="card empty">No matches.</div>`);
+    bindCards();
+  };
+  bindCards();
+  if (selected) renderDetail(selected);
+}
+
+// ----- Keys & access -----
+async function viewKeys() {
+  $("view").innerHTML = `
+    <h1>Keys &amp; access</h1>
+    <p class="sub">Agents never get a database password. They get a key that only works on behalf of a person, and only for the collections that were approved. Every key is requested, approved by someone else, shown once, and can be revoked instantly.</p>
+    ${isApprover() ? `<h2>Waiting for your approval</h2><div id="pend"><div class="dim">Loading…</div></div>` : ""}
+    <h2>Request an agent key</h2>
+    <div class="card">
+      <div class="row">
+        <input id="kn" placeholder="Agent name, e.g. report-bot" style="flex:1;min-width:220px" aria-label="Agent name">
+        ${["customers", "leads", "transactions"].map((c) => `<label class="chk"><input type="checkbox" class="ks" value="${c}"> ${c}</label>`).join("")}
+      </div>
+      <input id="kw" placeholder="What will this agent do?" style="width:100%;margin-top:10px" aria-label="What will this agent do">
+      <div class="actions"><button class="primary" id="kgo">Request key</button><span class="dim small">It can only touch the collections you tick, and never more than your own role allows.</span></div>
+    </div>
+    <h2>Your requests</h2><div id="mine"></div>
+    ${isApprover() ? `<h2>Everyone with access</h2><div id="ids"></div>` : ""}`;
   $("kgo").onclick = async () => {
-    try { await api("requests/agent", { method: "POST", body: JSON.stringify({ name: $("kn").value, scopes: [...document.querySelectorAll(".ks:checked")].map((x) => x.value), reason: $("kw").value }) }); toast("Requested. A different approver must approve it."); keysView(); }
+    try { await post("requests/agent", { name: $("kn").value.trim(), scopes: [...document.querySelectorAll(".ks:checked")].map((x) => x.value), reason: $("kw").value }); toast("Requested. Someone else must approve it."); viewKeys(); }
     catch (e) { toast("⛔ " + e.message); }
   };
-  mine();
-  if (!approver) return;
+  renderMine();
+  if (!isApprover()) return;
   const pend = (await api("requests")).filter((r) => r.status === "pending");
-  $("pend").innerHTML = pend.map((r) => `<div class="item"><b>${r.kind === "agent" ? "agent key · " + esc(r.name) : "access for @" + esc(r.github) + " as " + esc(r.role)}</b>
-    <div class="m">by ${esc(r.requester)} · ${esc(r.reason)}${r.scopes ? " · scopes: " + r.scopes.map(esc).join(", ") : ""}</div>
-    <button class="ok" data-d="approve" data-id="${r._id}">Approve</button> <button class="bad" data-d="reject" data-id="${r._id}">Reject</button></div>`).join("") || `<p class="dim">Nothing pending.</p>`;
+  $("pend").innerHTML = pend.map((r) => `<div class="card">
+      <div class="sentence"><b>${esc(person(r.requester))}</b> wants ${r.kind === "agent" ? `an agent key <b>${esc(r.name)}</b> that can touch <b>${r.scopes.map(esc).join(", ")}</b>` : `access to <b>${esc(BANKS[r.tenantId] ?? r.tenantId)}</b> as <b>${esc(r.role)}</b>`}</div>
+      <div class="why">${esc(r.reason)}</div>
+      <div class="actions">${r.requester === ME.id ? `<span class="dim small">Your own request: someone else must approve it.</span>` : `<button class="primary" data-d="approve" data-id="${r._id}">✓ Approve</button><button class="danger" data-d="reject" data-id="${r._id}">✗ Reject</button>`}<span class="dim small">${ago(r.createdAt)}</span></div>
+    </div>`).join("") || `<div class="card dim">No requests waiting.</div>`;
+  document.querySelectorAll("[data-d]").forEach((b) => b.onclick = async () => { try { await post(`requests/${b.dataset.id}/${b.dataset.d}`); toast(b.dataset.d === "approve" ? "Approved. They can collect the key once." : "Rejected"); } catch (e) { toast("⛔ " + e.message); } viewKeys(); });
   const ids = await api("identities");
-  $("ids").innerHTML = `<table><tr><th>identity</th><th>kind</th><th>role / scopes</th><th></th></tr>${ids.map((i) => `<tr><td>${esc(i._id)}</td><td>${i.kind}</td><td>${esc(i.role ?? (i.scopes ?? []).join(", "))}</td><td>${i.revoked ? `<span class="badge blocked">revoked</span>` : i._id === me.id ? "" : `<button data-rev="${esc(i._id)}">Revoke</button>`}</td></tr>`).join("")}</table>`;
-  document.querySelectorAll("[data-d]").forEach((b) => b.onclick = async () => { try { await api(`requests/${b.dataset.id}/${b.dataset.d}`, { method: "POST", body: "{}" }); toast(b.dataset.d + "d"); } catch (e) { toast("⛔ " + e.message); } keysView(); });
-  document.querySelectorAll("[data-rev]").forEach((b) => b.onclick = async () => { try { await api(`identities/${encodeURIComponent(b.dataset.rev)}/revoke`, { method: "POST", body: "{}" }); toast("revoked"); } catch (e) { toast("⛔ " + e.message); } keysView(); });
+  $("ids").innerHTML = `<div class="tablewrap"><table><tr><th>Who</th><th>Type</th><th>Can do</th><th>Approved by</th><th></th></tr>${ids.map((i) => `<tr>
+      <td><b>${esc(person(i._id))}</b><div class="dim small mono">${esc(i._id)}</div></td>
+      <td>${i.kind === "agent" ? "🤖 agent" : "👤 person"}</td>
+      <td>${i.kind === "agent" ? `touch ${esc((i.scopes ?? []).join(", "))}${i.owner ? `<div class="dim small">for ${esc(person(i.owner))}</div>` : ""}` : esc(i.role)}</td>
+      <td class="dim">${esc(i.createdBy ? person(i.createdBy) : "setup")}</td>
+      <td>${i.revoked ? `<span class="pill s-blocked">Revoked</span>` : i._id === ME.id ? `<span class="dim small">you</span>` : `<button class="danger" data-rev="${esc(i._id)}">Revoke</button>`}</td></tr>`).join("")}</table></div>`;
+  document.querySelectorAll("[data-rev]").forEach((b) => b.onclick = async () => {
+    if (!confirm(`Revoke ${b.dataset.rev}? Their key stops working immediately.`)) return;
+    try { await post(`identities/${encodeURIComponent(b.dataset.rev)}/revoke`); toast("Revoked"); } catch (e) { toast("⛔ " + e.message); } viewKeys();
+  });
 }
-$("keys").onclick = () => { selected = null; keysView().catch((e) => toast(e.message)); };
+
+async function renderMine() {
+  const box = $("mine"); if (!box) return;
+  const rs = await fetch("/api/requests/mine", { headers: authHeaders() }).then((r) => r.json()).catch(() => []);
+  if (!Array.isArray(rs) || !rs.length) { box.innerHTML = `<div class="card dim">You haven't requested anything yet.</div>`; return; }
+  box.innerHTML = rs.map((r) => `<div class="card">
+      <div class="row" style="justify-content:space-between">${pill(r.status)}<span class="dim small">${ago(r.createdAt)}</span></div>
+      <div class="sentence" style="margin-top:8px">${r.kind === "agent" ? `Agent key <b>${esc(r.name)}</b> for ${r.scopes.map(esc).join(", ")}` : `Access to <b>${esc(BANKS[r.tenantId] ?? r.tenantId)}</b> as <b>${esc(r.role)}</b>`}</div>
+      <div class="why">${esc(r.reason)}</div>
+      ${r.decidedBy ? `<div class="meta">Decided by ${esc(person(r.decidedBy))}</div>` : r.status === "pending" ? `<div class="meta">Waiting for an approver.</div>` : ""}
+      ${r.status === "approved" && r.kind === "agent" ? `<div class="actions"><button class="primary" data-claim="${r._id}">Reveal key</button><span class="dim small">Shown only once. Copy it somewhere safe.</span></div>` : ""}
+      <div id="k-${r._id}"></div>
+    </div>`).join("");
+  box.querySelectorAll("[data-claim]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.claim;
+    const k = await fetch(`/api/requests/${id}/claim`, { method: "POST", headers: { ...authHeaders(), "content-type": "application/json" } }).then((r) => r.json());
+    if (k.denied) return toast(k.denied);
+    b.parentElement.remove();
+    $("k-" + id).innerHTML = `<div class="keybox">${esc(k.key)}</div>
+      <button id="copy-${id}">Copy key</button>
+      <p class="small dim" style="margin-top:10px">Add it to your MCP client: URL <code>${location.origin}/mcp</code>, header <code>x-agent-key</code> = this key, and <code>x-human-key</code> = your own key.</p>`;
+    $("copy-" + id).onclick = () => navigator.clipboard.writeText(k.key).then(() => toast("Copied"));
+  });
+}
+
+// ----- Audit log -----
+async function viewAudit() {
+  const ev = await api("ledger?limit=150");
+  const prev = $("vres")?.innerHTML ?? "";
+  $("view").innerHTML = `
+    <h1>Audit log</h1>
+    <p class="sub">Every decision, newest first. Each entry is chained to the previous one with a SHA-256 hash, so editing or deleting history is detectable. The gateway's database user can only add entries, never edit them.</p>
+    <div class="actions"><button id="verify">🔒 Verify the whole chain</button><span id="vres" class="small">${prev}</span></div>
+    <div class="card"><div class="tl">${ev.map((e) => { const [t, k] = eventText(e); return `<div class="ev ${k}"><div>${t}</div><div class="when">#${e.seq} · ${new Date(e.at).toLocaleString()} <span class="hash">· ${e.hash.slice(0, 12)}… ← ${e.prevHash.slice(0, 8)}…</span></div></div>`; }).join("") || `<div class="dim">No events yet.</div>`}</div></div>`;
+  $("verify").onclick = async () => {
+    const v = await api("ledger/verify");
+    $("vres").innerHTML = v.ok ? `<span style="color:var(--mint)">✓ Intact: all ${v.entries} entries chain correctly.</span>` : `<span style="color:var(--red)">✗ Tampering detected at entry #${v.brokenAt} (${esc(v.why)}).</span>`;
+  };
+}
+
 boot();
 </script>
 </body>
