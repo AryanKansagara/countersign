@@ -3,11 +3,18 @@ import { sha256 } from "./ledger.js";
 import type { ChangeRequest, Identity, Policy, Rule } from "./types.js";
 import { Denied } from "./validate.js";
 
-export async function authenticate(c: Ctx, key: string | undefined, kind: Identity["kind"]): Promise<Identity> {
-  if (!key) throw new Denied(`missing ${kind} key`);
-  const id = await col.identities(c).findOne({ keyHash: sha256(key) });
+// A caller is either an API key or a verified session ({ id }) from GitHub sign-in.
+export type Who = string | { id: string } | undefined;
+
+export async function authenticate(c: Ctx, who: Who, kind: Identity["kind"]): Promise<Identity> {
+  if (!who) throw new Denied(`missing ${kind} key`);
+  const id = typeof who === "string"
+    ? await col.identities(c).findOne({ keyHash: sha256(who) })
+    : await col.identities(c).findOne({ _id: who.id });
   if (!id || id.kind !== kind) throw new Denied(`invalid ${kind} key`);
   if (id.disabled) throw new Denied(`${id._id} is disabled`);
+  const revoked = await col.settings(c).findOne({ _id: "revoked" as any, ids: id._id });
+  if (revoked) throw new Denied(`${id._id} has been revoked`);
   return id;
 }
 
@@ -21,7 +28,7 @@ export interface Session {
 
 // Effective rights = agent scope ∩ human's role policy. Permissions only ever come from here,
 // never from anything the model says or anything returned from the data.
-export async function resolveSession(c: Ctx, agentKey: string | undefined, humanKey: string | undefined): Promise<Session> {
+export async function resolveSession(c: Ctx, agentKey: string | undefined, humanKey: Who): Promise<Session> {
   const agent = await authenticate(c, agentKey, "agent");
   const human = await authenticate(c, humanKey, "human");
   if (agent.tenantId !== human.tenantId) throw new Denied("agent and human belong to different tenants");

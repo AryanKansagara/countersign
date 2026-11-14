@@ -6,7 +6,8 @@ import { ObjectId } from "mongodb";
 import { z } from "zod";
 import { col, connect, setup, type Ctx } from "./db.js";
 import { propose, read, summarize } from "./gateway.js";
-import { resolveSession } from "./policy.js";
+import { authenticate, resolveSession } from "./policy.js";
+import { claim, requestAgentKey } from "./auth.js";
 import { WRITE_OPS, type Op } from "./types.js";
 import { Denied } from "./validate.js";
 
@@ -35,6 +36,26 @@ export function buildServer(c: Ctx, agentKey?: string, humanKey?: string) {
         maskedOnRead: r.maskedFields, autoApproveUpTo: r.autoApproveMax, hardLimit: r.hardMax, approvalIf: r.approvalIf ?? null,
       })),
     };
+  }));
+
+  // Key self-service: a human (x-human-key only, no agent key needed) asks for a scoped agent key.
+  // An approver in the inbox must approve it; then claim_key shows it exactly once.
+  server.registerTool("request_agent_key", {
+    description: "Request a new agent key that acts on your behalf, limited to the collections you list. A different person must approve it in the Countersign inbox.",
+    inputSchema: { name: z.string().describe("short agent name, a-z 0-9 -"), scopes: z.array(z.string()).describe("collections the agent may touch"), reason: z.string() },
+  }, guard(async ({ name, scopes, reason }) => {
+    if (!humanKey) throw new Denied(`No identity. Sign in with GitHub at ${APPROVAL_URL} to get access first.`);
+    const r = await requestAgentKey(c, humanKey, name, scopes, reason);
+    return { requestId: String(r._id), status: r.status, next: `An approver must approve it at ${APPROVAL_URL}. Then call claim_key with this requestId (the key is shown once).` };
+  }));
+
+  server.registerTool("claim_key", {
+    description: "Collect an approved agent key. It is shown exactly once.",
+    inputSchema: { requestId: z.string() },
+  }, guard(async ({ requestId }) => {
+    const human = await authenticate(c, humanKey, "human");
+    const k = await claim(c, human._id, requestId);
+    return { ...k, use: "Set it as x-agent-key (remote MCP) or CS_AGENT_KEY (stdio), alongside your human key." };
   }));
 
   server.registerTool("query", {

@@ -1,6 +1,7 @@
 // HTTP: approval inbox + API, remote MCP endpoint, and the change-stream watchdog.
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { ObjectId, type Document } from "mongodb";
 import { col, connect, setup, type Ctx } from "./db.js";
@@ -8,7 +9,8 @@ import { approve, grantUnmask, reject, rollback } from "./gateway.js";
 import { embed, ensureVectorIndex, similar } from "./embed.js";
 import { append, verifyChain } from "./ledger.js";
 import { buildServer } from "./mcp.js";
-import { authenticate } from "./policy.js";
+import { authenticate, type Who } from "./policy.js";
+import { claim, decide, githubAuthorizeUrl, githubConfigured, githubLogin, listRequests, makeCookie, readCookie, requestAgentKey, requestMembership, revoke } from "./auth.js";
 import { Denied } from "./validate.js";
 
 const c = await connect();
@@ -50,7 +52,18 @@ const body = async (req: IncomingMessage): Promise<any> => {
   for await (const chunk of req) s += chunk;
   return s ? JSON.parse(s) : {};
 };
-const key = (req: IncomingMessage) => req.headers["x-human-key"] as string | undefined;
+// Header key (API/demo) wins; otherwise a signed GitHub session cookie.
+const session = (req: IncomingMessage) => readCookie(req.headers.cookie);
+const key = (req: IncomingMessage): Who => {
+  const h = req.headers["x-human-key"] as string | undefined;
+  if (h) return h;
+  const s = session(req);
+  return s?.id ? { id: s.id } : undefined;
+};
+const redirect = (res: ServerResponse, to: string, cookie?: string) => {
+  res.writeHead(302, { location: to, ...(cookie ? { "set-cookie": cookie } : {}) });
+  res.end();
+};
 
 // Show the approver what will change: before/after for the records the dry run found.
 function applyLocally(doc: Document, u: Document = {}) {
@@ -94,8 +107,55 @@ createServer(async (req, res) => {
       return transport.handleRequest(req, res, req.method === "POST" ? await body(req) : undefined);
     }
 
+    // ---- GitHub sign-in ----
+    if (url.pathname === "/auth/github") {
+      if (!githubConfigured()) return send(res, 503, { error: "GitHub sign-in is not configured" });
+      const state = randomBytes(16).toString("hex");
+      return redirect(res, githubAuthorizeUrl(state), `cs_oauth_state=${state}; Path=/auth; HttpOnly; SameSite=Lax; Secure; Max-Age=600`);
+    }
+    if (url.pathname === "/auth/github/callback") {
+      const want = req.headers.cookie?.match(/cs_oauth_state=([a-f0-9]+)/)?.[1];
+      if (!want || want !== url.searchParams.get("state")) throw new Denied("sign-in state mismatch; try again");
+      const s = await githubLogin(c, url.searchParams.get("code") ?? "");
+      return redirect(res, "/", makeCookie({ gh: s.gh, id: s.id }));
+    }
+    if (url.pathname === "/auth/logout") return redirect(res, "/", "cs_session=; Path=/; Max-Age=0");
+    if (url.pathname === "/auth/me") {
+      const s = session(req);
+      let idn = s?.id ? await col.identities(c).findOne({ _id: s.id }) : null;
+      // Membership approved since you signed in: upgrade the session in place.
+      if (s && !idn) idn = await col.identities(c).findOne({ kind: "human", github: s.gh } as any);
+      if (s && idn && !s.id) res.setHeader("set-cookie", makeCookie({ gh: s.gh, id: idn._id }));
+      return send(res, 200, { github: githubConfigured(), signedIn: !!s, gh: s?.gh ?? null, id: idn?._id ?? null, role: idn?.role ?? null, tenantId: idn?.tenantId ?? null });
+    }
+    // Signed in with GitHub but not a member yet: the only thing you can do is ask.
+    if (url.pathname === "/api/requests/membership" && req.method === "POST") {
+      const s = session(req);
+      if (!s) throw new Denied("sign in with GitHub first");
+      const { tenantId, role, reason } = await body(req);
+      return send(res, 200, await requestMembership(c, s.gh, tenantId, role, reason));
+    }
+    if (url.pathname === "/api/requests/mine") {
+      const s = session(req);
+      const k = key(req);
+      const me = k ? (await authenticate(c, k, "human"))._id : s ? `gh:${s.gh}` : null;
+      if (!me) throw new Denied("sign in first");
+      const ghReq = s ? `gh:${s.gh}` : "__none__";
+      return send(res, 200, await listRequests(c, { requester: { $in: [me, ghReq] } }));
+    }
+    if (url.pathname.startsWith("/api/requests/") && url.pathname.endsWith("/claim") && req.method === "POST") {
+      const s = session(req);
+      const k = key(req);
+      const me = k ? (await authenticate(c, k, "human"))._id : s ? `gh:${s.gh}` : null;
+      if (!me) throw new Denied("sign in first");
+      const rid = url.pathname.split("/")[3];
+      try { return send(res, 200, await claim(c, me, rid)); }
+      catch (e) { if (s && me !== `gh:${s.gh}`) return send(res, 200, await claim(c, `gh:${s.gh}`, rid)); throw e; }
+    }
+
     if (url.pathname === "/api/events") {
-      await authenticate(c, url.searchParams.get("key") ?? undefined, "human");
+      const qk = url.searchParams.get("key");
+      await authenticate(c, qk || key(req), "human");
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
       res.write(": hello\n\n");
       clients.add(res);
@@ -106,6 +166,21 @@ createServer(async (req, res) => {
     const human = await authenticate(c, key(req), "human");
 
     if (b === "me") return send(res, 200, { id: human._id, role: human.role, tenantId: human.tenantId });
+
+    // ---- keys: request, approve, revoke ----
+    if (b === "requests" && !id && req.method === "GET") return send(res, 200, await listRequests(c, { tenantId: human.tenantId }));
+    if (b === "requests" && id === "agent" && req.method === "POST") {
+      const { name, scopes, reason } = await body(req);
+      return send(res, 200, await requestAgentKey(c, key(req), name, scopes, reason));
+    }
+    if (b === "requests" && id && req.method === "POST" && (action === "approve" || action === "reject"))
+      return send(res, 200, await decide(c, key(req), id, action === "approve"));
+    if (b === "identities" && !id) {
+      const revoked = new Set(((await col.settings(c).findOne({ _id: "revoked" as any }))?.ids ?? []) as string[]);
+      const ids = await col.identities(c).find({ tenantId: human.tenantId }, { projection: { keyHash: 0 } }).toArray();
+      return send(res, 200, ids.map((i) => ({ ...i, revoked: revoked.has(i._id) })));
+    }
+    if (b === "identities" && id && action === "revoke" && req.method === "POST") return send(res, 200, await revoke(c, key(req), decodeURIComponent(id)));
     if (b === "proposals" && !id) {
       const list = await col.proposals(c).find({ tenantId: human.tenantId }).sort({ createdAt: -1 }).limit(100).toArray();
       return send(res, 200, list.map((p) => ({ _id: p._id, status: p.status, op: p.op, collection: p.collection, risk: p.risk, reason: p.reason, agentId: p.agentId, onBehalfOf: p.onBehalfOf, matched: p.dryRun?.ids.length ?? 0, expectedCount: p.expectedCount, createdAt: p.createdAt, approvedBy: p.approvedBy, result: p.result })));

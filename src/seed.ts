@@ -25,7 +25,7 @@ const pick = <T,>(a: T[], i: number) => a[i % a.length];
 
 export async function seed(c: Ctx) {
   await setup(c);
-  for (const n of ["identities", "policies", "proposals", "ledger", "before_images", "grants", "settings"]) await c.cs.collection(n).deleteMany({});
+  for (const n of ["identities", "policies", "proposals", "ledger", "before_images", "grants", "settings", "key_requests"]) await c.cs.collection(n).deleteMany({});
   await col.settings(c).insertOne({ _id: "seeding" as any, until: new Date(Date.now() + 60_000) }); // watchdog ignores the wipe+reseed
   for (const n of ["customers", "leads", "transactions"]) await c.data.collection(n).deleteMany({});
 

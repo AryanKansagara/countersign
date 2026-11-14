@@ -45,6 +45,8 @@
     <option value="cs_human_maple_alice">Alice · support · Maple Credit Union</option>
     <option value="cs_human_north_omar">Omar · approver · Northwind Wealth</option>
   </select>
+  <a id="gh" href="/auth/github" style="display:none"><button>Sign in with GitHub</button></a>
+  <button id="keys" title="Request, approve and revoke agent keys">🔑 Keys</button>
   <button id="kill" class="bad" title="Stop every agent in this tenant immediately">⏻ Kill switch</button>
   <button id="verify" title="Re-hash the whole ledger">Verify ledger</button>
   <input id="q" placeholder="Search audit in plain English…" style="width:280px" aria-label="Audit search">
@@ -59,12 +61,13 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
-const key = () => $("key").value;
+let GH = null; // GitHub session (cookie) when signed in as a member
+const key = () => $("key")?.value;
 let selected = location.hash.slice(1) || null;
 let killed = false;
 
 async function api(path, opts = {}) {
-  const r = await fetch("/api/" + path, { ...opts, headers: { "x-human-key": key(), "content-type": "application/json" } });
+  const r = await fetch("/api/" + path, { ...opts, headers: { ...(GH ? {} : { "x-human-key": key() }), "content-type": "application/json" } });
   const j = await r.json();
   if (!r.ok) throw new Error(j.denied || j.error || r.statusText);
   return j;
@@ -147,12 +150,84 @@ $("key").onchange = () => { selected = null; $("detail").innerHTML = ""; refresh
 let es;
 function listen() {
   es?.close();
-  es = new EventSource("/api/events?key=" + encodeURIComponent(key()));
+  es = new EventSource(GH ? "/api/events" : "/api/events?key=" + encodeURIComponent(key()));
   es.addEventListener("ledger", (m) => { const e = JSON.parse(m.data); $("ledger").insertAdjacentHTML("afterbegin", ledgerRow(e)); loadList(); if (selected && String(e.proposalId) === selected) loadDetail(); });
 }
 
-function refresh() { listen(); loadList().catch((e) => toast(e.message)); loadLedger().catch(() => {}); loadDetail(); }
-refresh();
+function refresh() { if (NOACCESS) return; listen(); loadList().catch((e) => toast(e.message)); loadLedger().catch(() => {}); loadDetail(); }
+// ---- GitHub sign-in + keys ----
+let NOACCESS = false;
+const opt = (v, label) => `<option value="${v}">${label}</option>`;
+async function boot() {
+  const me = await fetch("/auth/me").then((r) => r.json());
+  if (me.github && !me.signedIn) $("gh").style.display = "";
+  if (me.signedIn) {
+    $("gh").style.display = "none";
+    $("key").outerHTML = `<span class="dim">@${esc(me.gh)}</span> <a href="/auth/logout" class="dim">sign out</a>`;
+    if (me.id) GH = me;
+    else {
+      NOACCESS = true;
+      $("detail").innerHTML = `<h3 style="margin-top:0">Request access</h3>
+        <p class="dim">Signed in as @${esc(me.gh)}. An approver must let you in; nobody can grant themselves access.</p>
+        <p><select id="rt">${opt("maple", "Maple Credit Union")}${opt("north", "Northwind Wealth")}</select>
+        <select id="rr">${opt("support", "support")}${opt("approver", "approver")}</select></p>
+        <p><input id="rw" placeholder="Why do you need access?" style="width:100%"></p>
+        <button class="ok" id="rgo">Request access</button><div id="mine"></div>`;
+      $("rgo").onclick = async () => {
+        const r = await fetch("/api/requests/membership", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ tenantId: $("rt").value, role: $("rr").value, reason: $("rw").value }) }).then((r) => r.json());
+        toast(r.denied || "Requested. An approver will review it."); mine();
+      };
+      mine();
+      setInterval(async () => { const m = await fetch("/auth/me").then((r) => r.json()); if (m.id) location.reload(); }, 5000);
+    }
+  }
+  refresh();
+}
+
+async function mine() {
+  const rs = await fetch("/api/requests/mine", { headers: GH ? {} : { "x-human-key": key() } }).then((r) => r.json());
+  const box = $("mine"); if (!box || !Array.isArray(rs)) return;
+  box.innerHTML = `<h4>My requests</h4>` + (rs.map((r) => `<div class="item"><span class="badge ${r.status === "approved" || r.status === "claimed" ? "applied" : r.status}">${r.status}</span> <b>${r.kind === "agent" ? "agent key · " + esc(r.name) : "access · " + esc(r.tenantId) + " " + esc(r.role)}</b>
+    <div class="m">${esc(r.reason)}${r.scopes ? " · scopes: " + r.scopes.map(esc).join(", ") : ""}${r.decidedBy ? " · by " + esc(r.decidedBy) : ""}</div>
+    ${r.status === "approved" ? `<button data-claim="${r._id}">Reveal key (shown once)</button>` : ""}</div>`).join("") || `<p class="dim">None yet.</p>`);
+  box.querySelectorAll("[data-claim]").forEach((b) => b.onclick = async () => {
+    const k = await fetch(`/api/requests/${b.dataset.claim}/claim`, { method: "POST", headers: { "content-type": "application/json", ...(GH ? {} : { "x-human-key": key() }) } }).then((r) => r.json());
+    if (k.denied) return toast(k.denied);
+    b.outerHTML = k.kind === "agent"
+      ? `<p><b>Agent key</b> (copy now; it won't be shown again):</p><pre style="white-space:pre-wrap">${esc(k.key)}</pre>
+         <p class="dim">MCP config: URL <code>${location.origin}/mcp</code>, headers <code>x-agent-key: ${esc(k.key)}</code> and <code>x-human-key: &lt;your human key&gt;</code></p>`
+      : `<p><b>Your human key</b> (for MCP clients; copy now):</p><pre style="white-space:pre-wrap">${esc(k.key)}</pre>`;
+  });
+}
+
+async function keysView() {
+  const me = await api("me");
+  const approver = ["approver", "admin"].includes(me.role);
+  $("detail").innerHTML = `<h3 style="margin-top:0">🔑 Keys</h3>
+    <h4>Request an agent key</h4>
+    <p class="dim">The agent acts on your behalf and can only touch what you tick (and what your role allows). A different approver must sign off.</p>
+    <p><input id="kn" placeholder="agent name, e.g. report-bot"> ${["customers", "leads", "transactions"].map((c) => `<label><input type="checkbox" value="${c}" class="ks"> ${c}</label>`).join(" ")}</p>
+    <p><input id="kw" placeholder="Why does this agent need access?" style="width:100%"></p>
+    <button class="ok" id="kgo">Request key</button>
+    <div id="mine"></div>
+    ${approver ? `<h4>Waiting for your approval</h4><div id="pend"></div><h4>Identities in ${esc(me.tenantId)}</h4><div id="ids"></div>` : ""}`;
+  $("kgo").onclick = async () => {
+    try { await api("requests/agent", { method: "POST", body: JSON.stringify({ name: $("kn").value, scopes: [...document.querySelectorAll(".ks:checked")].map((x) => x.value), reason: $("kw").value }) }); toast("Requested. A different approver must approve it."); keysView(); }
+    catch (e) { toast("⛔ " + e.message); }
+  };
+  mine();
+  if (!approver) return;
+  const pend = (await api("requests")).filter((r) => r.status === "pending");
+  $("pend").innerHTML = pend.map((r) => `<div class="item"><b>${r.kind === "agent" ? "agent key · " + esc(r.name) : "access for @" + esc(r.github) + " as " + esc(r.role)}</b>
+    <div class="m">by ${esc(r.requester)} · ${esc(r.reason)}${r.scopes ? " · scopes: " + r.scopes.map(esc).join(", ") : ""}</div>
+    <button class="ok" data-d="approve" data-id="${r._id}">Approve</button> <button class="bad" data-d="reject" data-id="${r._id}">Reject</button></div>`).join("") || `<p class="dim">Nothing pending.</p>`;
+  const ids = await api("identities");
+  $("ids").innerHTML = `<table><tr><th>identity</th><th>kind</th><th>role / scopes</th><th></th></tr>${ids.map((i) => `<tr><td>${esc(i._id)}</td><td>${i.kind}</td><td>${esc(i.role ?? (i.scopes ?? []).join(", "))}</td><td>${i.revoked ? `<span class="badge blocked">revoked</span>` : i._id === me.id ? "" : `<button data-rev="${esc(i._id)}">Revoke</button>`}</td></tr>`).join("")}</table>`;
+  document.querySelectorAll("[data-d]").forEach((b) => b.onclick = async () => { try { await api(`requests/${b.dataset.id}/${b.dataset.d}`, { method: "POST", body: "{}" }); toast(b.dataset.d + "d"); } catch (e) { toast("⛔ " + e.message); } keysView(); });
+  document.querySelectorAll("[data-rev]").forEach((b) => b.onclick = async () => { try { await api(`identities/${encodeURIComponent(b.dataset.rev)}/revoke`, { method: "POST", body: "{}" }); toast("revoked"); } catch (e) { toast("⛔ " + e.message); } keysView(); });
+}
+$("keys").onclick = () => { selected = null; keysView().catch((e) => toast(e.message)); };
+boot();
 </script>
 </body>
 </html>

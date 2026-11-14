@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { ObjectId, type Document } from "mongodb";
 import { col, type Ctx } from "./db.js";
 import { append, canonical, sha256 } from "./ledger.js";
-import { assertNotKilled, assessRisk, authenticate, type Session } from "./policy.js";
+import { assertNotKilled, assessRisk, authenticate, type Session, type Who } from "./policy.js";
 import type { ChangeRequest, Proposal } from "./types.js";
 import { buildReadPipeline, Denied, validateChange } from "./validate.js";
 import { describe, embed, similar } from "./embed.js";
@@ -93,7 +93,7 @@ async function dryRunMatch(c: Ctx, tenantId: string, req: ChangeRequest, hardMax
 }
 
 // ---------- approve / reject ----------
-export async function approve(c: Ctx, id: string, approverKey: string | undefined) {
+export async function approve(c: Ctx, id: string, approverKey: Who) {
   const human = await authenticate(c, approverKey, "human");
   const p = await col.proposals(c).findOne({ _id: new ObjectId(id) });
   if (!p) throw new Denied("no such proposal");
@@ -110,7 +110,7 @@ export async function approve(c: Ctx, id: string, approverKey: string | undefine
   return execute(c, p._id);
 }
 
-export async function reject(c: Ctx, id: string, approverKey: string | undefined, why = "") {
+export async function reject(c: Ctx, id: string, approverKey: Who, why = "") {
   const human = await authenticate(c, approverKey, "human");
   const r = await col.proposals(c).findOneAndUpdate(
     { _id: new ObjectId(id), status: "pending", tenantId: human.tenantId }, { $set: { status: "rejected", approvedBy: human._id } });
@@ -188,7 +188,7 @@ export async function execute(c: Ctx, id: ObjectId): Promise<Proposal> {
 }
 
 // ---------- rollback ----------
-export async function rollback(c: Ctx, id: string, humanKey: string | undefined) {
+export async function rollback(c: Ctx, id: string, humanKey: Who) {
   const human = await authenticate(c, humanKey, "human");
   if (!["approver", "admin"].includes(human.role ?? "")) throw new Denied(`role ${human.role} cannot roll back`);
   const pid = new ObjectId(id);
@@ -240,7 +240,7 @@ export async function read(c: Ctx, s: Session, collection: string, filter?: Docu
 }
 
 // Time-limited unmask. Expires by TTL index; nothing to clean up.
-export async function grantUnmask(c: Ctx, humanKey: string | undefined, field: string, reason: string, minutes = 15) {
+export async function grantUnmask(c: Ctx, humanKey: Who, field: string, reason: string, minutes = 15) {
   const human = await authenticate(c, humanKey, "human");
   if (!reason?.trim()) throw new Denied("a reason (e.g. case number) is required");
   const g = { tenantId: human.tenantId, humanId: human._id, field, reason, expiresAt: new Date(Date.now() + minutes * 60_000) };

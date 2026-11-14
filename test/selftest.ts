@@ -8,6 +8,7 @@ import { approve, grantUnmask, propose, read, rollback } from "../src/gateway.js
 import { verifyChain } from "../src/ledger.js";
 import { resolveSession } from "../src/policy.js";
 import { KEYS, seed } from "../src/seed.js";
+import { claim, decide, requestAgentKey, revoke } from "../src/auth.js";
 
 const rs = process.env.MONGODB_URI ? null : await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
 const c = await connect(process.env.MONGODB_URI ?? rs!.getUri());
@@ -41,6 +42,18 @@ p = await propose(c, await s(), { collection: "transactions", op: "insertOne", d
 assert.equal(p.status, "applied");
 p = await propose(c, await s(), { collection: "transactions", op: "insertOne", document: { customerId: "MAPLE-1003", type: "refund", amount: 400, memo: "x" }, expectedCount: 1, reason: "big refund" });
 assert.equal(p.status, "pending");
+
+// Key self-service: request -> no self-approval -> approve -> claim once -> works -> revoke -> dead.
+const kr = await requestAgentKey(c, KEYS.maple.alice, "report-bot", ["customers"], "monthly reports");
+await assert.rejects(decide(c, KEYS.maple.alice, String(kr._id), true), /cannot approve|self/);
+await decide(c, KEYS.maple.bob, String(kr._id), true);
+const got = await claim(c, "human:maple:alice", String(kr._id));
+await assert.rejects(claim(c, "human:maple:alice", String(kr._id)), /nothing to claim/);
+const rs2 = await resolveSession(c, got.key, KEYS.maple.alice);
+assert.equal(rs2.rule("customers")?.collection, "customers");
+assert.equal(rs2.rule("leads"), undefined); // scoped to what was approved
+await revoke(c, KEYS.maple.bob, got.identity);
+await assert.rejects(resolveSession(c, got.key, KEYS.maple.alice), /revoked/);
 
 assert.deepEqual((await verifyChain(c)).ok, true);
 

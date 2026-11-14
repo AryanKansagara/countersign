@@ -80,7 +80,12 @@ Local (stdio), e.g. Claude Desktop or Cursor:
 
 Remote (streamable HTTP): `POST https://<host>/mcp` with headers `x-agent-key` and `x-human-key`.
 
-Tools: `whoami`, `query`, `propose_change`, `proposal_status`.
+Tools: `whoami`, `query`, `propose_change`, `proposal_status`, `request_agent_key`, `claim_key`.
+
+### Access and keys
+
+- **Sign in with GitHub** on the inbox. Admins listed in `GITHUB_ADMINS` become approvers on first sign-in; everyone else submits an access request that a different approver must accept.
+- **Agent keys are requested, not minted.** A human asks for an agent key scoped to specific collections (inbox or the `request_agent_key` MCP tool), a *different* approver approves it, and the key is shown exactly once (`claim_key`). Revocation is instant. Identities are insert-only at the database level, so a compromised gateway can add identities but never change an existing one's role or scopes.
 
 ## Layout
 
