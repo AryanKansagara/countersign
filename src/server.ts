@@ -108,6 +108,10 @@ createServer(async (req, res) => {
       return send(res, 200, statsCache.body);
     }
     if (url.pathname === "/health") return send(res, 200, { ok: true });
+    if (/^\/img\/[a-z0-9-]+\.png$/.test(url.pathname)) {
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "public, max-age=3600" });
+      return res.end(await readFile(new URL(`../public${url.pathname}`, import.meta.url)));
+    }
 
     // Remote MCP. Header auth (/mcp + x-agent-key) or, for clients that can't set headers
     // (ChatGPT, claude.ai custom connectors), the key in the path: /mcp/<agent key>. Treat that URL as a secret.

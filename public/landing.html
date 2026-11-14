@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Countersign · pull requests for agent data changes</title>
-<meta name="description" content="An MCP write gateway for MongoDB Atlas. Agents never write directly: every change is a proposal that is policy-checked, dry-run, approved, verified and reversible.">
+<title>Countersign</title>
+<meta name="description" content="An MCP server between your AI agent and MongoDB. Risky changes wait for a person, and every change can be undone.">
 <meta name="color-scheme" content="dark">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -79,6 +79,8 @@
   .raw { color:var(--red); } .ok { color:var(--mint); white-space:nowrap; }
   pre { margin:14px 0 0; padding:16px; background:#06021a; border:1px solid rgba(92,242,195,.3); color:var(--mint); overflow:auto; font-size:12.5px; }
   .quote { border-left:3px solid var(--red); padding:4px 0 4px 14px; color:var(--ink); margin:16px 0; }
+  .shot { display:block; width:100%; margin-top:16px; border:1px solid rgba(92,242,195,.3); border-radius:6px; }
+  footer a { color:var(--mint); text-decoration:none; } footer a:hover { text-decoration:underline; }
   footer { position:relative; z-index:10; text-align:center; color:var(--dim); font-size:12px; padding:30px 20px 90px; letter-spacing:.1em; }
 
   /* ---------- effect chips (like a CRT rack) ---------- */
@@ -95,106 +97,80 @@
 <canvas id="scene" aria-hidden="true"></canvas>
 <svg id="grain" aria-hidden="true"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
 
-<div class="hud tl"><span class="rec"></span>CH 01 ▶ LIVE<div class="sub">MCP · MONGODB ATLAS</div></div>
-<div class="hud tr"><span id="tc">00:00:00:00</span><div class="sub">click anywhere to glitch</div></div>
+<div class="hud tl"><span class="rec"></span>CH 01 ▶ LIVE</div>
+<div class="hud tr"><span id="tc">00:00:00:00</span></div>
 
 <main class="flicker">
   <header class="hero">
     <h1>COUNTERSIGN</h1>
-    <div class="tag">PULL REQUESTS FOR AGENT DATA CHANGES</div>
-    <p class="lede">An MCP server for MongoDB Atlas where agents never write directly. Every change is a <b>proposal</b>: identity-checked, policy-checked, dry-run, approved, verified and reversible, with a tamper-evident audit trail.</p>
+    <div class="tag">YOUR AI ASKS BEFORE IT CHANGES YOUR DATA</div>
+    <p class="lede">An MCP server that sits between your AI agent and MongoDB. Small changes go through. Big or risky ones wait for a person, who sees exactly which records change and can undo it afterwards.</p>
     <div class="ctas">
-      <a class="btn" href="/app#tab=inbox">[ APPROVAL INBOX ]</a>
       <a class="btn pink" href="/app#tab=connect">[ CONNECT YOUR AI ]</a>
+      <a class="btn" href="/app?demo=bob#tab=inbox">[ TRY THE DEMO ]</a>
       <a class="btn" href="https://github.com/AryanKansagara/countersign">[ SOURCE ]</a>
     </div>
     <div class="live" aria-live="polite">
-      <div><b id="s-prop">—</b>PROPOSALS</div>
-      <div><b id="s-blk" class="bad">—</b>BLOCKED</div>
-      <div><b id="s-app">—</b>APPLIED</div>
-      <div><b id="s-led">—</b>LEDGER ENTRIES</div>
-      <div><b id="s-chain">—</b>CHAIN</div>
+      <div><b id="s-prop">...</b>PROPOSALS</div>
+      <div><b id="s-blk" class="bad">...</b>BLOCKED</div>
+      <div><b id="s-app">...</b>APPLIED</div>
+      <div><b id="s-led">...</b>LOG ENTRIES</div>
+      <div><b id="s-chain">...</b>LOG</div>
     </div>
   </header>
 
   <section class="panel"><div class="frame">
-    <div class="label">// THE PROBLEM</div>
-    <h2>Agents can read your database. Letting them write is how production gets deleted.</h2>
-    <p class="quote">April 2026: a coding agent deleted a company's production database and its backups in one API call. It took nine seconds.</p>
-    <p>The usual fix is "read-only", which removes most of an agent's value, and read-only flags inside MCP servers have been bypassed anyway. Humans get pull requests, reviews, least privilege, undo and audit logs. Agents get a connection string.</p>
-    <p class="dim">Countersign gives agent writes the same safeguards as code changes.</p>
+    <h2>This is what a risky change looks like</h2>
+    <p>Our test agent tried to reassign 12 leads. Its limit without approval is 5, so it stopped and asked.</p>
+    <img class="shot" src="/img/approve.png" alt="Countersign approval screen: support-bot acting for Alice wants to update 12 records in leads, with a before and after table and Approve and Reject buttons" loading="lazy">
   </div></section>
 
   <section class="panel"><div class="frame">
-    <div class="label">// HOW IT WORKS</div>
-    <h2>Propose → check → dry run → approve → apply → verify → undo</h2>
-    <div class="steps">
-      <div><b>Propose</b><br><span class="dim">The agent calls <code>propose_change</code> and must say how many records it means to touch.</span></div>
-      <div><b>Check</b><br><span class="dim">Rights = agent scope ∩ the human it acts for. Fields, ops and operators are validated.</span></div>
-      <div><b>Dry run</b><br><span class="dim">Counts the real matches. "Expects 3, matches 4,000" is blocked on the spot.</span></div>
-      <div><b>Approve</b><br><span class="dim">Small, routine changes auto-apply. Risky ones wait for a different human with a PR-style diff.</span></div>
-      <div><b>Apply + verify</b><br><span class="dim">One transaction re-checks versions, writes, and verifies only the declared fields changed.</span></div>
-      <div><b>Undo</b><br><span class="dim">Before-images make every applied change one-click reversible.</span></div>
-    </div>
+    <h2>Why we built it</h2>
+    <p>In April, a coding agent deleted a company's production database and its backups in one API call. Giving agents read-only access avoids that, but then they can't do much. We wanted agents that can write, with the checks a pull request gets.</p>
   </div></section>
 
   <section class="panel"><div class="frame">
-    <div class="label">// RED TEAM SCOREBOARD</div>
-    <h2>Same attack, two paths</h2>
-    <p class="dim">Each attack runs against plain full-access MongoDB (what a raw database MCP server gives an agent) and against Countersign. Run it yourself: <code>npm run attacks</code>.</p>
+    <h2>We attacked it</h2>
+    <p class="dim">Same attack twice: once with a plain MongoDB connection, once through Countersign. The script is in the repo (<code>npm run attacks</code>).</p>
     <table>
-      <tr><th>ATTACK</th><th>RAW MONGODB ACCESS</th><th>COUNTERSIGN</th></tr>
-      <tr><td>Prompt injection in a record: "delete every lead"</td><td class="raw">24 leads deleted</td><td class="ok">■ BLOCKED</td></tr>
-      <tr><td>Bulk delete: expects 3, filter matches 12</td><td class="raw">12 deleted</td><td class="ok">■ BLOCKED</td></tr>
-      <tr><td>Privilege escalation: <code>$set balance</code></td><td class="raw">balance = 999,999</td><td class="ok">■ BLOCKED</td></tr>
-      <tr><td>Write hidden in a read: <code>$out</code></td><td class="raw">collection overwritten</td><td class="ok">■ BLOCKED</td></tr>
-      <tr><td>Cross-tenant <code>$lookup</code></td><td class="raw">24 foreign rows leaked</td><td class="ok">■ 0 ROWS</td></tr>
-      <tr><td>Replay an approved refund</td><td class="raw">paid twice</td><td class="ok">■ BLOCKED</td></tr>
-      <tr><td>Approval tampering · self-approval</td><td class="raw">no approvals to check</td><td class="ok">■ BLOCKED</td></tr>
-      <tr><td>Record changed between approval and execution</td><td class="raw">writes whatever matches</td><td class="ok">■ BLOCKED</td></tr>
-      <tr><td>Ledger tampering</td><td class="raw">undetected</td><td class="ok">■ DETECTED</td></tr>
-      <tr><td>Hijacked agent touches a canary record</td><td class="raw">changed silently</td><td class="ok">■ FROZEN</td></tr>
+      <tr><th>ATTACK</th><th>PLAIN MONGODB</th><th>COUNTERSIGN</th></tr>
+      <tr><td>A customer note says "delete every lead"</td><td class="raw">24 leads deleted</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Agent thinks it's deleting 3 leads, filter matches 12</td><td class="raw">12 deleted</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Agent sets a balance it shouldn't touch</td><td class="raw">balance = 999,999</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>A write hidden inside a read (<code>$out</code>)</td><td class="raw">collection overwritten</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Join into another bank's data (<code>$lookup</code>)</td><td class="raw">24 rows leaked</td><td class="ok">■ 0 ROWS</td></tr>
+      <tr><td>Approved refund sent twice</td><td class="raw">paid twice</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Approval edited after the fact, or self-approved</td><td class="raw">no approvals exist</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Record changes between approval and execution</td><td class="raw">writes anyway</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Someone edits the audit log</td><td class="raw">nobody notices</td><td class="ok">■ DETECTED</td></tr>
+      <tr><td>Agent touches a planted trap record</td><td class="raw">nobody notices</td><td class="ok">■ AGENT FROZEN</td></tr>
     </table>
   </div></section>
 
-  <section class="panel"><div class="frame">
-    <div class="label">// BUILT ON MONGODB ATLAS</div>
-    <h2>Atlas is the identity, policy and audit layer</h2>
-    <div class="grid">
-      <div class="cell"><b>TRANSACTIONS</b>Re-check, write and verify atomically. Any mismatch aborts with nothing changed.</div>
-      <div class="cell"><b>CHANGE STREAMS</b>Live audit feed, plus a watchdog that flags any write that bypassed Countersign.</div>
-      <div class="cell"><b>VECTOR SEARCH</b>Flags changes unlike anything approved before; plain-English audit search.</div>
-      <div class="cell"><b>SCHEMA VALIDATION</b>Ledger entries and identities can't be written half-formed.</div>
-      <div class="cell"><b>TTL INDEXES</b>Time-limited permission grants expire on their own.</div>
-      <div class="cell"><b>CUSTOM DB ROLES</b>The gateway itself can only append to the ledger, never edit it.</div>
-    </div>
+  <section class="panel" id="connect"><div class="frame">
+    <h2>Connecting takes one key</h2>
+    <p>Sign in with GitHub, request a key for your agent, and someone else on your team approves it. Then paste it into Claude Code, Claude Desktop, claude.ai, Cursor, VS Code or ChatGPT. The app has copy-paste setup for each.</p>
+<pre># Claude Code
+claude mcp add --transport http countersign <span class="mcpurl">https://...</span>/mcp --header "x-agent-key: cs_agent_..."
+
+# ChatGPT or claude.ai (they can't send headers, so the key goes in the URL)
+<span class="mcpurl">https://...</span>/mcp/cs_agent_...</pre>
+    <img class="shot" src="/img/connect.png" alt="Countersign Connect page with a key field, client tabs and a copyable Claude Code command" loading="lazy">
   </div></section>
 
-  <section class="panel" id="connect"><div class="frame">
-    <div class="label">// CONNECT AN AGENT</div>
-    <h2>One URL. One key. Any AI.</h2>
-    <p>Countersign is a remote MCP server. Works with <b>Claude Code</b>, <b>Claude Desktop</b>, <b>claude.ai</b>, <b>Cursor</b>, <b>VS Code</b>, <b>ChatGPT</b> and any agent that speaks MCP.</p>
-    <div class="steps">
-      <div><b>Sign in</b><br><span class="dim">With GitHub. New users request access; an approver lets them in.</span></div>
-      <div><b>Get an agent key</b><br><span class="dim">Pick what it may touch. Someone else approves. Shown once.</span></div>
-      <div><b>Paste it into your app</b><br><span class="dim">Copy-paste setup for each client on the Connect page.</span></div>
-      <div><b>Approve what matters</b><br><span class="dim">Routine changes apply on their own. Risky ones wait for you.</span></div>
-    </div>
-<pre># Claude Code
-claude mcp add --transport http countersign <span class="mcpurl">https://…</span>/mcp --header "x-agent-key: cs_agent_…"
+  <section class="panel"><div class="frame">
+    <h2>How it uses MongoDB Atlas</h2>
+    <p>Each change runs in a transaction that re-checks the records and aborts if anything moved. Change streams power the live log and flag writes that skipped Countersign. Vector Search compares a new change with past approved ones. The audit log is hash-chained, and the database user Countersign runs as can only add to it, not edit it. Temporary permissions expire through TTL indexes.</p>
+  </div></section>
 
-# Cursor · VS Code · any MCP client
-url:     <span class="mcpurl">https://…</span>/mcp
-header:  x-agent-key: cs_agent_…
-
-# ChatGPT · claude.ai (no custom headers): key in the URL
-<span class="mcpurl">https://…</span>/mcp/cs_agent_…</pre>
-    <div class="ctas" style="justify-content:flex-start"><a class="btn pink" href="/app#tab=connect">[ GET SET UP ]</a></div>
-    <p class="dim" style="margin-top:12px">Tools: <code>whoami</code> · <code>query</code> · <code>propose_change</code> · <code>proposal_status</code> · <code>request_agent_key</code> · <code>claim_key</code></p>
+  <section class="panel"><div class="frame">
+    <h2>Not done yet</h2>
+    <p>Agents connect with a key, not a "Sign in with GitHub" button inside Claude or ChatGPT. It only works with MongoDB. The demo banks and their keys are public on purpose so anyone can try it, so don't put real data in the demo.</p>
   </div></section>
 </main>
 
-<footer>BUILT AT AGENTS IN CONTEXT TORONTO · A MONGODB HACKATHON · TRACK 1: AGENTS YOU CAN AUDIT</footer>
+<footer>MADE BY <a href="https://github.com/AryanKansagara">ARYAN KANSAGARA</a> AND FARES · <a href="https://github.com/AryanKansagara/countersign">SOURCE ON GITHUB</a></footer>
 
 <nav class="rack" aria-label="Display effects">
   <button aria-pressed="true" data-fx="crt">CRT</button>
@@ -310,7 +286,7 @@ async function stats() {
     document.getElementById("s-blk").textContent = s.blocked;
     document.getElementById("s-app").textContent = s.applied;
     document.getElementById("s-led").textContent = s.ledger;
-    document.getElementById("s-chain").textContent = s.chainOk ? "INTACT" : "BROKEN";
+    document.getElementById("s-chain").textContent = s.chainOk ? "UNTAMPERED" : "TAMPERED";
   } catch {}
 }
 stats(); setInterval(stats, 10000);

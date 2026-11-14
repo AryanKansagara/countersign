@@ -239,7 +239,7 @@ function renderWelcome(auth) {
     ${auth.github ? `<a class="gh" href="/auth/github">${GH_ICON} Sign in with GitHub</a>
       <p class="dim small" style="margin-top:10px">New here? Sign in, then request access. An approver lets you in.</p>`
       : `<p class="dim">GitHub sign-in isn't configured on this server.</p>`}
-    <div class="or">— OR EXPLORE THE DEMO AS —</div>
+    <div class="or">OR TRY THE DEMO AS</div>
     <div class="demo-users">
       ${Object.entries(DEMO).map(([k, u]) => `<button data-demo="${k}"><b>${u.name} · ${u.role}</b><span class="dim small">${u.bank}</span></button>`).join("")}
     </div>
