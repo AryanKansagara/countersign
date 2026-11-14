@@ -29,6 +29,15 @@ export const col = {
 
 // Idempotent: schema validation + indexes. Run on every boot.
 export async function setup(c: Ctx) {
+  try { await setupUnsafe(c); }
+  catch (e: any) {
+    // The runtime gateway user (countersignGateway role) can't change schemas — by design. Admin runs setup via seed.
+    if (e?.code === 13 || e?.codeName === "Unauthorized") return console.error("setup skipped: runtime user lacks DDL rights (expected)");
+    throw e;
+  }
+}
+
+async function setupUnsafe(c: Ctx) {
   const existing = new Set((await c.cs.listCollections().toArray()).map((x) => x.name));
   const ensure = async (name: string, validator?: Document) => {
     if (!existing.has(name)) await c.cs.createCollection(name, validator ? { validator } : {});
