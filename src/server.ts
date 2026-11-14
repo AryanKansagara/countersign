@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { ObjectId, type Document } from "mongodb";
 import { col, connect, setup, type Ctx } from "./db.js";
 import { approve, grantUnmask, reject, rollback } from "./gateway.js";
+import { embed, ensureVectorIndex, similar } from "./embed.js";
 import { append, verifyChain } from "./ledger.js";
 import { buildServer } from "./mcp.js";
 import { authenticate } from "./policy.js";
@@ -12,6 +13,7 @@ import { Denied } from "./validate.js";
 
 const c = await connect();
 await setup(c);
+await ensureVectorIndex(c);
 
 // ---- live events to the inbox (Server-Sent Events fed by change streams) ----
 const clients = new Set<ServerResponse>();
@@ -68,7 +70,8 @@ async function detail(id: string, tenantId: string) {
   const diff = p.op === "insertOne" ? [{ before: null, after: p.document }]
     : docs.map((d) => ({ before: strip(d), after: p.op.startsWith("delete") ? null : strip(applyLocally(d, p.update)) }));
   const ledger = await col.ledger(c).find({ proposalId: p._id }).sort({ seq: 1 }).toArray();
-  return { proposal: { ...p, hash: p.hash, dryRun: { matched: p.dryRun?.ids.length ?? 0, idsHash: p.dryRun?.idsHash } }, diff, ledger };
+  const { embedding: _e, ...pub } = p;
+  return { proposal: { ...pub, dryRun: { matched: p.dryRun?.ids.length ?? 0, idsHash: p.dryRun?.idsHash } }, diff, ledger };
 }
 
 // ---- routes ----
@@ -112,6 +115,12 @@ createServer(async (req, res) => {
       if (action === "approve") return send(res, 200, await approve(c, id, key(req)));
       if (action === "reject") return send(res, 200, await reject(c, id, key(req), (await body(req)).why));
       if (action === "rollback") return send(res, 200, await rollback(c, id, key(req)));
+    }
+    if (b === "search") {
+      // Plain-English audit search over every proposal in this tenant (Atlas Vector Search).
+      const q = url.searchParams.get("q") ?? "";
+      const hits = await similar(c, human.tenantId, await embed(q), ["applied", "pending", "blocked", "failed", "rejected", "rolled_back", "expired"], 10);
+      return send(res, 200, hits.map((h) => ({ _id: h._id, score: h.score, status: h.status, op: h.op, collection: h.collection, reason: h.reason, agentId: h.agentId, onBehalfOf: h.onBehalfOf, approvedBy: h.approvedBy, createdAt: h.createdAt })));
     }
     if (b === "ledger" && id === "verify") return send(res, 200, await verifyChain(c));
     if (b === "ledger") return send(res, 200, await col.ledger(c).find().sort({ seq: -1 }).limit(Number(url.searchParams.get("limit") ?? 100)).toArray());

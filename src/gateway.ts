@@ -5,6 +5,7 @@ import { append, canonical, sha256 } from "./ledger.js";
 import { assertNotKilled, assessRisk, authenticate, type Session } from "./policy.js";
 import type { ChangeRequest, Proposal } from "./types.js";
 import { buildReadPipeline, Denied, validateChange } from "./validate.js";
+import { describe, embed, similar } from "./embed.js";
 
 const TTL_MS = 15 * 60_000;
 
@@ -19,7 +20,7 @@ export const proposalHash = (p: Omit<Proposal, "hash"> | Proposal) =>
 
 export const summarize = (p: Proposal) => ({
   proposalId: String(p._id), status: p.status, risk: p.risk, collection: p.collection, op: p.op,
-  matched: p.dryRun?.ids.length ?? 0, expectedCount: p.expectedCount, result: p.result ?? null,
+  matched: p.dryRun?.ids.length ?? 0, expectedCount: p.expectedCount, result: p.result ?? null, precedent: p.precedent ?? null,
 });
 
 // ---------- propose ----------
@@ -43,6 +44,7 @@ export async function propose(c: Ctx, s: Session, req: ChangeRequest): Promise<P
     const dryRun = await dryRunMatch(c, s.tenantId, req, rule!.hardMax);
     p = { ...base, dryRun, risk: assessRisk(req, rule!, req.op === "insertOne" ? 1 : dryRun.ids.length), status: "pending", hash: "" };
     if (p.risk.tier === "blocked") p.status = "blocked";
+    else await noveltyCheck(c, p);
   } catch (e) {
     if (!(e instanceof Denied)) throw e;
     p = { ...base, risk: { tier: "blocked", reasons: [e.message] }, status: "blocked", hash: "" };
@@ -58,6 +60,25 @@ export async function propose(c: Ctx, s: Session, req: ChangeRequest): Promise<P
     return execute(c, p._id);
   }
   return p;
+}
+
+// Vector Search: has anything like this been approved before in this tenant? Unprecedented
+// changes go to a human even if they're small. Fails open: novelty is an extra signal, not the wall.
+const NOVELTY_MIN_HISTORY = 5;
+const NOVELTY_MIN_SCORE = 0.8; // vectorSearchScore for cosine = (1 + cos) / 2
+async function noveltyCheck(c: Ctx, p: Proposal) {
+  try {
+    p.embedding = await embed(describe(p));
+    const [best] = await similar(c, p.tenantId, p.embedding, ["applied"], 1);
+    p.precedent = best ? { proposalId: String(best._id), score: Number(best.score.toFixed(3)), reason: best.reason } : null;
+    const history = await col.proposals(c).countDocuments({ tenantId: p.tenantId, status: "applied" });
+    if (history >= NOVELTY_MIN_HISTORY && (!best || best.score < NOVELTY_MIN_SCORE)) {
+      p.risk.reasons.push(`novel: nothing similar has been approved before (closest ${best ? best.score.toFixed(2) : "none"})`);
+      p.risk.tier = "approval";
+    }
+  } catch (e: any) {
+    console.error("novelty check skipped:", e.message);
+  }
 }
 
 // Records exactly which documents (and which versions) the change would touch.

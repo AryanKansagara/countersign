@@ -1,6 +1,7 @@
 // Demo world: two fintech tenants on one cluster. Wipes and recreates demo data.
 import { col, connect, setup, type Ctx } from "./db.js";
 import { append, sha256 } from "./ledger.js";
+import { ensureVectorIndex } from "./embed.js";
 import type { Identity, Policy, Rule } from "./types.js";
 
 // Demo keys are deliberately readable. Real deployments issue random keys.
@@ -68,6 +69,7 @@ export async function seed(c: Ctx) {
     })));
   }
   await c.data.collection("customers").createIndex({ tenantId: 1, customerNo: 1 }, { unique: true });
+  await ensureVectorIndex(c);
   await append(c, "system.seeded", "system", { tenants: ["maple", "north"] });
 }
 

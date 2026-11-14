@@ -68,5 +68,7 @@ export interface Proposal extends ChangeRequest {
   approvedBy?: string;
   policyVersion?: number;
   result?: Document;
+  embedding?: number[];
+  precedent?: { proposalId: string; score: number; reason: string } | null;
   createdAt: Date;
 }

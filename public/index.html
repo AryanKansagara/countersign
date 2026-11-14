@@ -47,6 +47,7 @@
   </select>
   <button id="kill" class="bad" title="Stop every agent in this tenant immediately">⏻ Kill switch</button>
   <button id="verify" title="Re-hash the whole ledger">Verify ledger</button>
+  <input id="q" placeholder="Search audit in plain English…" style="width:280px" aria-label="Audit search">
   <span class="who" id="who"></span>
 </header>
 <main>
@@ -109,7 +110,8 @@ async function loadDetail() {
     <h3 style="margin-top:0"><span class="badge ${p.status}">${p.status}</span> ${esc(p.op)} on <code>${esc(p.collection)}</code></h3>
     <p><b>Why:</b> ${esc(p.reason)}</p>
     <p class="dim">Agent <code>${esc(p.agentId)}</code> acting for <code>${esc(p.onBehalfOf)}</code> · policy v${p.policyVersion} · expires ${new Date(p.expiresAt).toLocaleTimeString()}</p>
-    <p><b>Dry run:</b> filter matches <b>${p.dryRun.matched}</b> record(s); agent expected <b>${p.expectedCount}</b>.</p>
+    ${p.precedent ? `<p class="dim">Closest approved precedent (Vector Search): “${esc(p.precedent.reason)}” · similarity ${(p.precedent.score * 100).toFixed(0)}%</p>` : ""}
+$1 filter matches <b>${p.dryRun.matched}</b> record(s); agent expected <b>${p.expectedCount}</b>.</p>
     ${p.risk.reasons.length ? `<p><b>Flagged because:</b></p><ul class="reasons">${p.risk.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : `<p class="dim">Within auto-approve policy.</p>`}
     <details><summary class="dim">Exact request</summary><table><tr><td>filter</td><td>${esc(JSON.stringify(p.filter))}</td></tr><tr><td>update</td><td>${esc(JSON.stringify(p.update ?? p.document))}</td></tr><tr><td>approval hash</td><td>${esc(p.hash)}</td></tr></table></details>
     <div class="actions">
@@ -132,7 +134,13 @@ function ledgerRow(e) {
 }
 async function loadLedger() { $("ledger").innerHTML = (await api("ledger?limit=60")).map(ledgerRow).join(""); }
 
-$("verify").onclick = async () => { const v = await api("ledger/verify"); toast(v.ok ? `✅ Ledger intact · ${v.entries} entries chained` : `⛔ Tampering detected at entry #${v.brokenAt}: ${v.why}`); };
+$("q").onkeydown = async (ev) => {
+  if (ev.key !== "Enter" || !ev.target.value.trim()) return;
+  const hits = await api("search?q=" + encodeURIComponent(ev.target.value));
+  $("detail").innerHTML = `<h3 style="margin-top:0">Audit search: “${esc(ev.target.value)}”</h3><p class="dim">Atlas Vector Search over every proposal in this tenant.</p>` + (hits.map((h) => `<div class="item" data-id="${h._id}"><span class="badge ${h.status}">${h.status}</span> <b>${esc(h.op)} · ${esc(h.collection)}</b> <span class="dim">match ${(h.score * 100).toFixed(0)}%</span><div class="m">${esc(h.reason)}</div><div class="m">${esc(h.agentId)} for ${esc(h.onBehalfOf)}${h.approvedBy ? " · approved by " + esc(h.approvedBy) : ""} · ${ago(h.createdAt)}</div></div>`).join("") || `<p class="dim">No matches.</p>`);
+  document.querySelectorAll("#detail .item").forEach((el) => el.onclick = () => { selected = el.dataset.id; location.hash = selected; loadList(); loadDetail(); });
+};
+$1async () => { const v = await api("ledger/verify"); toast(v.ok ? `✅ Ledger intact · ${v.entries} entries chained` : `⛔ Tampering detected at entry #${v.brokenAt}: ${v.why}`); };
 $("kill").onclick = async () => { try { await api("killswitch", { method: "POST", body: JSON.stringify({ on: !killed }) }); toast(killed ? "Agents resumed" : "All agents in this tenant stopped"); loadList(); } catch (e) { toast("⛔ " + e.message); } };
 $("key").onchange = () => { selected = null; $("detail").innerHTML = ""; refresh(); };
 
