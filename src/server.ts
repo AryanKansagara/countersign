@@ -88,13 +88,24 @@ async function detail(id: string, tenantId: string) {
 }
 
 // ---- routes ----
+let statsCache: { at: number; body: unknown } | null = null;
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   const [, a, b, id, action] = url.pathname.split("/");
   try {
-    if (url.pathname === "/" || url.pathname === "/index.html") {
-      res.writeHead(200, { "content-type": "text/html" });
-      return res.end(await readFile(new URL("../public/index.html", import.meta.url)));
+    if (url.pathname === "/" || url.pathname === "/app") {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      return res.end(await readFile(new URL(url.pathname === "/" ? "../public/landing.html" : "../public/index.html", import.meta.url)));
+    }
+    // Public, counts only. Cached so the landing page can't make us re-walk the ledger on every hit.
+    if (url.pathname === "/stats") {
+      if (!statsCache || Date.now() - statsCache.at > 10_000) {
+        const [proposals, blocked, applied, ledger, chain] = await Promise.all([
+          col.proposals(c).countDocuments(), col.proposals(c).countDocuments({ status: { $in: ["blocked", "failed"] } }),
+          col.proposals(c).countDocuments({ status: { $in: ["applied", "rolled_back"] } }), col.ledger(c).countDocuments(), verifyChain(c)]);
+        statsCache = { at: Date.now(), body: { proposals, blocked, applied, ledger, chainOk: chain.ok } };
+      }
+      return send(res, 200, statsCache.body);
     }
     if (url.pathname === "/health") return send(res, 200, { ok: true });
 
@@ -117,9 +128,9 @@ createServer(async (req, res) => {
       const want = req.headers.cookie?.match(/cs_oauth_state=([a-f0-9]+)/)?.[1];
       if (!want || want !== url.searchParams.get("state")) throw new Denied("sign-in state mismatch; try again");
       const s = await githubLogin(c, url.searchParams.get("code") ?? "");
-      return redirect(res, "/", makeCookie({ gh: s.gh, id: s.id }));
+      return redirect(res, "/app", makeCookie({ gh: s.gh, id: s.id }));
     }
-    if (url.pathname === "/auth/logout") return redirect(res, "/", "cs_session=; Path=/; Max-Age=0");
+    if (url.pathname === "/auth/logout") return redirect(res, "/app", "cs_session=; Path=/; Max-Age=0");
     if (url.pathname === "/auth/me") {
       const s = session(req);
       let idn = s?.id ? await col.identities(c).findOne({ _id: s.id }) : null;

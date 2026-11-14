@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Countersign · pull requests for agent data changes</title>
+<meta name="description" content="An MCP write gateway for MongoDB Atlas. Agents never write directly: every change is a proposal that is policy-checked, dry-run, approved, verified and reversible.">
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#f3ecff; --dim:#a79bc4; --pink:#ff3fd2; --mint:#5cf2c3; --amber:#ffc65c; --red:#ff5470; --bg:#0b0420; }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 "Space Mono", ui-monospace, monospace; overflow-x:hidden; }
+  a { color:inherit; }
+
+  /* ---------- CRT stack ---------- */
+  #scene { position:fixed; inset:0; width:100%; height:100%; z-index:0; }
+  .crt::before { /* scanlines */
+    content:""; position:fixed; inset:0; z-index:50; pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,.28) 0 1px, transparent 1px 3px);
+  }
+  .crt::after { /* vignette + curvature shading */
+    content:""; position:fixed; inset:0; z-index:51; pointer-events:none;
+    background:radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.65) 100%);
+  }
+  #grain { position:fixed; inset:-50%; width:200%; height:200%; z-index:52; pointer-events:none; opacity:.07; animation:grain 0.5s steps(6) infinite; }
+  @keyframes grain { 0%{transform:translate(0,0)} 20%{transform:translate(-5%,3%)} 40%{transform:translate(4%,-6%)} 60%{transform:translate(-3%,5%)} 80%{transform:translate(6%,2%)} 100%{transform:translate(0,0)} }
+  .flicker { animation:flicker 4s infinite; }
+  @keyframes flicker { 0%,100%{opacity:1} 92%{opacity:1} 93%{opacity:.86} 94%{opacity:1} 97%{opacity:.93} }
+  body.no-crt::before, body.no-crt::after { display:none; }
+  body.no-grain #grain { display:none; }
+  body.glitching main, body.glitching .hud { animation:glitch .35s steps(2) 1; }
+  @keyframes glitch { 0%{transform:translate(0)} 25%{transform:translate(-6px,1px) skewX(-6deg); filter:hue-rotate(40deg)} 50%{transform:translate(5px,-2px)} 75%{transform:translate(-3px,0) skewX(4deg)} 100%{transform:translate(0)} }
+
+  /* ---------- HUD ---------- */
+  .hud { position:fixed; z-index:40; font-size:13px; letter-spacing:.08em; color:var(--mint); text-shadow:0 0 8px rgba(92,242,195,.6); }
+  .hud.tl { top:14px; left:18px; } .hud.tr { top:14px; right:18px; text-align:right; }
+  .hud .sub { color:var(--dim); text-shadow:none; font-size:11px; }
+  .rec { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--red); margin-right:6px; box-shadow:0 0 8px var(--red); animation:blink 1.2s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:0} }
+
+  /* ---------- hero ---------- */
+  main { position:relative; z-index:10; }
+  .hero { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; padding:0 20px 14vh; text-align:center; }
+  h1 { margin:0; font-size:clamp(44px, 9vw, 120px); line-height:1; letter-spacing:.04em; font-weight:700;
+       color:#fff; text-shadow:0 0 18px rgba(255,255,255,.55), 0 0 42px rgba(255,63,210,.55); }
+  body.rgb h1, body.rgb h2 { text-shadow:-3px 0 rgba(255,40,80,.75), 3px 0 rgba(40,220,255,.75), 0 0 24px rgba(255,63,210,.5); }
+  .tag { margin-top:10px; background:rgba(11,4,32,.62); padding:4px 10px 4px 16px; font-size:clamp(12px,1.6vw,17px); letter-spacing:.42em; font-weight:700; color:#fff; text-shadow:0 0 10px rgba(255,255,255,.5); }
+  .lede { max-width:640px; margin:26px auto 0; color:var(--ink); background:rgba(11,4,32,.55); padding:10px 14px; border:1px solid rgba(255,63,210,.25); }
+  .ctas { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; margin-top:26px; }
+  .btn { display:inline-block; padding:10px 18px; border:1px solid var(--mint); color:var(--mint); text-decoration:none; font-weight:700; letter-spacing:.12em; background:rgba(11,4,32,.7); box-shadow:0 0 14px rgba(92,242,195,.25) inset, 0 0 10px rgba(92,242,195,.25); transition:all .15s; }
+  .btn:hover, .btn:focus-visible { background:var(--mint); color:#0b0420; outline:none; }
+  .btn.pink { border-color:var(--pink); color:var(--pink); box-shadow:0 0 14px rgba(255,63,210,.25) inset, 0 0 10px rgba(255,63,210,.25); }
+  .btn.pink:hover, .btn.pink:focus-visible { background:var(--pink); color:#0b0420; }
+
+  /* ---------- live strip ---------- */
+  .live { display:flex; background:rgba(11,4,32,.72); border:1px solid rgba(92,242,195,.2); padding:10px 22px; gap:28px; flex-wrap:wrap; justify-content:center; margin-top:30px; font-size:12px; color:var(--dim); letter-spacing:.1em; }
+  .live b { display:block; font-size:22px; color:var(--mint); text-shadow:0 0 10px rgba(92,242,195,.5); letter-spacing:0; }
+  .live b.bad { color:var(--pink); text-shadow:0 0 10px rgba(255,63,210,.5); }
+
+  /* ---------- sections ---------- */
+  section.panel { position:relative; z-index:10; max-width:1040px; margin:0 auto 90px; padding:0 20px; }
+  .frame { background:rgba(11,4,32,.86); border:1px solid rgba(255,63,210,.35); box-shadow:0 0 30px rgba(255,63,210,.12); padding:28px 30px; backdrop-filter:blur(2px); }
+  .label { color:var(--mint); font-size:12px; letter-spacing:.3em; margin-bottom:6px; }
+  h2 { margin:0 0 14px; font-size:clamp(24px,3.4vw,38px); line-height:1.15; color:#fff; text-shadow:0 0 14px rgba(255,63,210,.45); }
+  p { margin:0 0 12px; }
+  .dim { color:var(--dim); }
+  .grid { display:grid; gap:14px; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); margin-top:18px; }
+  .cell { border:1px solid rgba(167,155,196,.25); padding:14px; background:rgba(255,255,255,.02); }
+  .cell b { color:var(--amber); display:block; margin-bottom:4px; letter-spacing:.06em; }
+  .steps { counter-reset:s; display:grid; gap:10px; grid-template-columns:repeat(auto-fit, minmax(170px,1fr)); margin-top:18px; }
+  .steps div { counter-increment:s; border-left:2px solid var(--pink); padding:6px 12px; background:rgba(255,63,210,.05); }
+  .steps div::before { content:"0" counter(s); display:block; color:var(--pink); font-weight:700; }
+  table { width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
+  th, td { text-align:left; padding:9px 10px; border-bottom:1px solid rgba(167,155,196,.18); vertical-align:top; }
+  th { color:var(--dim); font-weight:400; letter-spacing:.15em; font-size:11px; }
+  .raw { color:var(--red); } .ok { color:var(--mint); white-space:nowrap; }
+  pre { margin:14px 0 0; padding:16px; background:#06021a; border:1px solid rgba(92,242,195,.3); color:var(--mint); overflow:auto; font-size:12.5px; }
+  .quote { border-left:3px solid var(--red); padding:4px 0 4px 14px; color:var(--ink); margin:16px 0; }
+  footer { position:relative; z-index:10; text-align:center; color:var(--dim); font-size:12px; padding:30px 20px 90px; letter-spacing:.1em; }
+
+  /* ---------- effect chips (like a CRT rack) ---------- */
+  .rack { position:fixed; z-index:60; bottom:14px; left:50%; transform:translateX(-50%); display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .rack button { font:12px "Space Mono", monospace; padding:4px 10px; color:var(--ink); background:rgba(11,4,32,.85); border:1px solid rgba(167,155,196,.4); cursor:pointer; }
+  .rack button[aria-pressed="true"] { background:var(--mint); color:#0b0420; border-color:var(--mint); }
+  .rack button::before { content:"□ "; } .rack button[aria-pressed="true"]::before { content:"■ "; }
+
+  @media (prefers-reduced-motion: reduce) { #grain, .flicker, .rec { animation:none; } }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+</style>
+</head>
+<body class="crt rgb">
+<canvas id="scene" aria-hidden="true"></canvas>
+<svg id="grain" aria-hidden="true"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
+
+<div class="hud tl"><span class="rec"></span>CH 01 ▶ LIVE<div class="sub">MCP · MONGODB ATLAS</div></div>
+<div class="hud tr"><span id="tc">00:00:00:00</span><div class="sub">click anywhere to glitch</div></div>
+
+<main class="flicker">
+  <header class="hero">
+    <h1>COUNTERSIGN</h1>
+    <div class="tag">PULL REQUESTS FOR AGENT DATA CHANGES</div>
+    <p class="lede">An MCP server for MongoDB Atlas where agents never write directly. Every change is a <b>proposal</b>: identity-checked, policy-checked, dry-run, approved, verified and reversible, with a tamper-evident audit trail.</p>
+    <div class="ctas">
+      <a class="btn" href="/app">[ OPEN APPROVAL INBOX ]</a>
+      <a class="btn pink" href="#connect">[ CONNECT AN AGENT ]</a>
+      <a class="btn" href="https://github.com/AryanKansagara/countersign">[ SOURCE ]</a>
+    </div>
+    <div class="live" aria-live="polite">
+      <div><b id="s-prop">—</b>PROPOSALS</div>
+      <div><b id="s-blk" class="bad">—</b>BLOCKED</div>
+      <div><b id="s-app">—</b>APPLIED</div>
+      <div><b id="s-led">—</b>LEDGER ENTRIES</div>
+      <div><b id="s-chain">—</b>CHAIN</div>
+    </div>
+  </header>
+
+  <section class="panel"><div class="frame">
+    <div class="label">// THE PROBLEM</div>
+    <h2>Agents can read your database. Letting them write is how production gets deleted.</h2>
+    <p class="quote">April 2026: a coding agent deleted a company's production database and its backups in one API call. It took nine seconds.</p>
+    <p>The usual fix is "read-only", which removes most of an agent's value, and read-only flags inside MCP servers have been bypassed anyway. Humans get pull requests, reviews, least privilege, undo and audit logs. Agents get a connection string.</p>
+    <p class="dim">Countersign gives agent writes the same safeguards as code changes.</p>
+  </div></section>
+
+  <section class="panel"><div class="frame">
+    <div class="label">// HOW IT WORKS</div>
+    <h2>Propose → check → dry run → approve → apply → verify → undo</h2>
+    <div class="steps">
+      <div><b>Propose</b><br><span class="dim">The agent calls <code>propose_change</code> and must say how many records it means to touch.</span></div>
+      <div><b>Check</b><br><span class="dim">Rights = agent scope ∩ the human it acts for. Fields, ops and operators are validated.</span></div>
+      <div><b>Dry run</b><br><span class="dim">Counts the real matches. "Expects 3, matches 4,000" is blocked on the spot.</span></div>
+      <div><b>Approve</b><br><span class="dim">Small, routine changes auto-apply. Risky ones wait for a different human with a PR-style diff.</span></div>
+      <div><b>Apply + verify</b><br><span class="dim">One transaction re-checks versions, writes, and verifies only the declared fields changed.</span></div>
+      <div><b>Undo</b><br><span class="dim">Before-images make every applied change one-click reversible.</span></div>
+    </div>
+  </div></section>
+
+  <section class="panel"><div class="frame">
+    <div class="label">// RED TEAM SCOREBOARD</div>
+    <h2>Same attack, two paths</h2>
+    <p class="dim">Each attack runs against plain full-access MongoDB (what a raw database MCP server gives an agent) and against Countersign. Run it yourself: <code>npm run attacks</code>.</p>
+    <table>
+      <tr><th>ATTACK</th><th>RAW MONGODB ACCESS</th><th>COUNTERSIGN</th></tr>
+      <tr><td>Prompt injection in a record: "delete every lead"</td><td class="raw">24 leads deleted</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Bulk delete: expects 3, filter matches 12</td><td class="raw">12 deleted</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Privilege escalation: <code>$set balance</code></td><td class="raw">balance = 999,999</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Write hidden in a read: <code>$out</code></td><td class="raw">collection overwritten</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Cross-tenant <code>$lookup</code></td><td class="raw">24 foreign rows leaked</td><td class="ok">■ 0 ROWS</td></tr>
+      <tr><td>Replay an approved refund</td><td class="raw">paid twice</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Approval tampering · self-approval</td><td class="raw">no approvals to check</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Record changed between approval and execution</td><td class="raw">writes whatever matches</td><td class="ok">■ BLOCKED</td></tr>
+      <tr><td>Ledger tampering</td><td class="raw">undetected</td><td class="ok">■ DETECTED</td></tr>
+      <tr><td>Hijacked agent touches a canary record</td><td class="raw">changed silently</td><td class="ok">■ FROZEN</td></tr>
+    </table>
+  </div></section>
+
+  <section class="panel"><div class="frame">
+    <div class="label">// BUILT ON MONGODB ATLAS</div>
+    <h2>Atlas is the identity, policy and audit layer</h2>
+    <div class="grid">
+      <div class="cell"><b>TRANSACTIONS</b>Re-check, write and verify atomically. Any mismatch aborts with nothing changed.</div>
+      <div class="cell"><b>CHANGE STREAMS</b>Live audit feed, plus a watchdog that flags any write that bypassed Countersign.</div>
+      <div class="cell"><b>VECTOR SEARCH</b>Flags changes unlike anything approved before; plain-English audit search.</div>
+      <div class="cell"><b>SCHEMA VALIDATION</b>Ledger entries and identities can't be written half-formed.</div>
+      <div class="cell"><b>TTL INDEXES</b>Time-limited permission grants expire on their own.</div>
+      <div class="cell"><b>CUSTOM DB ROLES</b>The gateway itself can only append to the ledger, never edit it.</div>
+    </div>
+  </div></section>
+
+  <section class="panel" id="connect"><div class="frame">
+    <div class="label">// CONNECT AN AGENT</div>
+    <h2>Install once. Bring any LLM.</h2>
+    <div class="steps">
+      <div><b>Sign in</b><br><span class="dim">With GitHub on the <a href="/app">inbox</a>. New users request access; an approver lets them in.</span></div>
+      <div><b>Request a key</b><br><span class="dim">Pick the collections your agent may touch. A different approver signs off.</span></div>
+      <div><b>Claim it once</b><br><span class="dim">The key is shown exactly once. Revocation is instant.</span></div>
+      <div><b>Connect</b><br><span class="dim">Any MCP client: Claude, Cursor, your own agent.</span></div>
+    </div>
+<pre>{
+  "mcpServers": {
+    "countersign": {
+      "type": "http",
+      "url": "<span id="mcpurl">https://…/mcp</span>",
+      "headers": {
+        "x-agent-key": "cs_agent_…",
+        "x-human-key": "cs_human_…"
+      }
+    }
+  }
+}</pre>
+    <p class="dim" style="margin-top:12px">Tools: <code>whoami</code> · <code>query</code> · <code>propose_change</code> · <code>proposal_status</code> · <code>request_agent_key</code> · <code>claim_key</code></p>
+  </div></section>
+</main>
+
+<footer>BUILT AT AGENTS IN CONTEXT TORONTO · A MONGODB HACKATHON · TRACK 1: AGENTS YOU CAN AUDIT</footer>
+
+<nav class="rack" aria-label="Display effects">
+  <button aria-pressed="true" data-fx="crt">CRT</button>
+  <button aria-pressed="true" data-fx="rgb">RGBSplit</button>
+  <button aria-pressed="true" data-fx="grain">Grain</button>
+  <button aria-pressed="true" data-fx="motion">Motion</button>
+</nav>
+
+<script>
+// ---------- synthwave scene: sky, stars, striped sun, ridges, moving grid ----------
+const cv = document.getElementById("scene"), g = cv.getContext("2d");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let W, H, DPR, stars = [], ridges = [], moving = !reduce, t0 = performance.now();
+
+function rand(seed) { return () => (seed = (seed * 16807) % 2147483647) / 2147483647; }
+function build() {
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  W = cv.width = innerWidth * DPR; H = cv.height = innerHeight * DPR;
+  const r = rand(7);
+  stars = Array.from({ length: 160 }, () => [r() * W, r() * H * 0.55, r() * 1.4 + 0.3, r()]);
+  // Two jagged mountain layers, generated once.
+  ridges = [0.55, 0.75].map((amp, layer) => {
+    const pts = [], n = 22;
+    for (let i = 0; i <= n; i++) {
+      const x = (i / n) * W, center = Math.abs(i / n - 0.5);
+      const h = (r() * 0.6 + 0.4) * amp * (center < 0.16 ? 0.35 : 1) * H * 0.22;
+      pts.push([x, h]);
+    }
+    return { pts, layer };
+  });
+}
+
+function draw(now) {
+  const t = (now - t0) / 1000, horizon = H * 0.62;
+  // sky
+  const sky = g.createLinearGradient(0, 0, 0, horizon);
+  sky.addColorStop(0, "#0b0420"); sky.addColorStop(0.55, "#2a0b5c"); sky.addColorStop(0.85, "#7a1a7e"); sky.addColorStop(1, "#ff3fa4");
+  g.fillStyle = sky; g.fillRect(0, 0, W, horizon);
+  // stars
+  for (const [x, y, s, p] of stars) { g.globalAlpha = 0.35 + 0.65 * Math.abs(Math.sin(t * 0.8 + p * 9)); g.fillStyle = "#fff"; g.fillRect(x, y, s * DPR, s * DPR); }
+  g.globalAlpha = 1;
+  // sun with glow and horizontal cut stripes
+  const R = Math.min(W, H) * 0.2, cx = W / 2, cy = horizon - R * 0.38;
+  g.save();
+  g.shadowColor = "rgba(255,120,220,.9)"; g.shadowBlur = 80 * DPR;
+  const sun = g.createLinearGradient(0, cy - R, 0, cy + R);
+  sun.addColorStop(0, "#fffbe6"); sun.addColorStop(0.5, "#fff3c4"); sun.addColorStop(1, "#ff9be6");
+  g.fillStyle = sun; g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+  g.restore();
+  g.fillStyle = "#4a1270";
+  for (let i = 0; i < 9; i++) {
+    const y = cy + R * 0.05 + i * R * 0.11 + ((t * 6 * DPR) % (R * 0.11)), hh = 1 + i * 0.9 * DPR;
+    if (y < cy + R) g.fillRect(cx - R, y, R * 2, hh);
+  }
+  // ridges
+  for (const { pts, layer } of ridges) {
+    g.fillStyle = layer ? "#1a0838" : "#2b0d4f";
+    g.beginPath(); g.moveTo(0, horizon);
+    for (const [x, h] of pts) g.lineTo(x, horizon - h * (layer ? 0.7 : 1));
+    g.lineTo(W, horizon); g.closePath(); g.fill();
+    g.strokeStyle = layer ? "rgba(255,63,210,.25)" : "rgba(255,63,210,.45)"; g.lineWidth = DPR; g.stroke();
+  }
+  // floor
+  const floor = g.createLinearGradient(0, horizon, 0, H);
+  floor.addColorStop(0, "#1b0634"); floor.addColorStop(1, "#05010f");
+  g.fillStyle = floor; g.fillRect(0, horizon, W, H - horizon);
+  // perspective grid
+  g.strokeStyle = "#ff3fd2"; g.shadowColor = "#ff3fd2"; g.shadowBlur = 10 * DPR; g.lineWidth = 1.2 * DPR;
+  const vx = W / 2;
+  for (let i = -24; i <= 24; i++) { g.beginPath(); g.moveTo(vx + i * W * 0.012, horizon); g.lineTo(vx + i * W * 0.12, H); g.stroke(); }
+  const speed = moving ? (t * 0.35) % 1 : 0;
+  for (let i = 0; i < 18; i++) {
+    const z = (i + speed) / 18, y = horizon + (H - horizon) * Math.pow(z, 2.4);
+    g.globalAlpha = Math.min(1, z * 2.2); g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+  }
+  g.globalAlpha = 1; g.shadowBlur = 0;
+  g.fillStyle = "rgba(255,63,210,.9)"; g.fillRect(0, horizon - DPR, W, 2 * DPR);
+  if (moving) requestAnimationFrame(draw);
+}
+addEventListener("resize", () => { build(); if (!moving) draw(performance.now()); });
+build(); draw(performance.now());
+
+// ---------- HUD timecode ----------
+const tc = document.getElementById("tc"), start = performance.now();
+setInterval(() => {
+  const ms = performance.now() - start, f = Math.floor((ms % 1000) / 1000 * 30), s = Math.floor(ms / 1000);
+  tc.textContent = [Math.floor(s / 3600), Math.floor(s / 60) % 60, s % 60, f].map((n) => String(n).padStart(2, "0")).join(":");
+}, 1000 / 30);
+
+// ---------- effect rack ----------
+document.querySelectorAll(".rack button").forEach((b) => b.onclick = (e) => {
+  e.stopPropagation();
+  const on = b.getAttribute("aria-pressed") !== "true";
+  b.setAttribute("aria-pressed", on);
+  const fx = b.dataset.fx;
+  if (fx === "crt") document.body.classList.toggle("no-crt", !on);
+  if (fx === "rgb") document.body.classList.toggle("rgb", on);
+  if (fx === "grain") document.body.classList.toggle("no-grain", !on);
+  if (fx === "motion") { moving = on; if (on) requestAnimationFrame(draw); }
+});
+if (reduce) document.querySelector('[data-fx="motion"]').setAttribute("aria-pressed", "false");
+addEventListener("click", (e) => {
+  if (e.target.closest("a,button,pre")) return;
+  document.body.classList.remove("glitching"); void document.body.offsetWidth; document.body.classList.add("glitching");
+});
+
+// ---------- live numbers from the real system ----------
+document.getElementById("mcpurl").textContent = location.origin + "/mcp";
+async function stats() {
+  try {
+    const s = await fetch("/stats").then((r) => r.json());
+    document.getElementById("s-prop").textContent = s.proposals;
+    document.getElementById("s-blk").textContent = s.blocked;
+    document.getElementById("s-app").textContent = s.applied;
+    document.getElementById("s-led").textContent = s.ledger;
+    document.getElementById("s-chain").textContent = s.chainOk ? "INTACT" : "BROKEN";
+  } catch {}
+}
+stats(); setInterval(stats, 10000);
+</script>
+</body>
+</html>

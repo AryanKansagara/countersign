@@ -44,9 +44,9 @@ export function buildServer(c: Ctx, agentKey?: string, humanKey?: string) {
     description: "Request a new agent key that acts on your behalf, limited to the collections you list. A different person must approve it in the Countersign inbox.",
     inputSchema: { name: z.string().describe("short agent name, a-z 0-9 -"), scopes: z.array(z.string()).describe("collections the agent may touch"), reason: z.string() },
   }, guard(async ({ name, scopes, reason }) => {
-    if (!humanKey) throw new Denied(`No identity. Sign in with GitHub at ${APPROVAL_URL} to get access first.`);
+    if (!humanKey) throw new Denied(`No identity. Sign in with GitHub at ${APPROVAL_URL}/app to get access first.`);
     const r = await requestAgentKey(c, humanKey, name, scopes, reason);
-    return { requestId: String(r._id), status: r.status, next: `An approver must approve it at ${APPROVAL_URL}. Then call claim_key with this requestId (the key is shown once).` };
+    return { requestId: String(r._id), status: r.status, next: `An approver must approve it at ${APPROVAL_URL}/app. Then call claim_key with this requestId (the key is shown once).` };
   }));
 
   server.registerTool("claim_key", {
@@ -80,7 +80,7 @@ export function buildServer(c: Ctx, agentKey?: string, humanKey?: string) {
   }, guard(async (req) => {
     const p = await propose(c, await session(), req);
     const out: any = summarize(p);
-    if (p.status === "pending") out.next = `Waiting for human approval at ${APPROVAL_URL}/#${p._id}. Check back with proposal_status.`;
+    if (p.status === "pending") out.next = `Waiting for human approval at ${APPROVAL_URL}/app#${p._id}. Check back with proposal_status.`;
     return out;
   }));
 
