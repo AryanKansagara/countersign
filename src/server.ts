@@ -109,9 +109,11 @@ createServer(async (req, res) => {
     }
     if (url.pathname === "/health") return send(res, 200, { ok: true });
 
-    // Remote MCP: point any MCP client here with x-agent-key / x-human-key headers.
-    if (url.pathname === "/mcp") {
-      const server = buildServer(c, req.headers["x-agent-key"] as string, req.headers["x-human-key"] as string);
+    // Remote MCP. Header auth (/mcp + x-agent-key) or, for clients that can't set headers
+    // (ChatGPT, claude.ai custom connectors), the key in the path: /mcp/<agent key>. Treat that URL as a secret.
+    if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {
+      const pathKey = url.pathname.startsWith("/mcp/") ? decodeURIComponent(url.pathname.slice(5)) : undefined;
+      const server = buildServer(c, pathKey || (req.headers["x-agent-key"] as string), req.headers["x-human-key"] as string);
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
       res.on("close", () => { transport.close(); server.close(); });
       await server.connect(transport);

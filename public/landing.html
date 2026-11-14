@@ -104,8 +104,8 @@
     <div class="tag">PULL REQUESTS FOR AGENT DATA CHANGES</div>
     <p class="lede">An MCP server for MongoDB Atlas where agents never write directly. Every change is a <b>proposal</b>: identity-checked, policy-checked, dry-run, approved, verified and reversible, with a tamper-evident audit trail.</p>
     <div class="ctas">
-      <a class="btn" href="/app">[ OPEN APPROVAL INBOX ]</a>
-      <a class="btn pink" href="#connect">[ CONNECT AN AGENT ]</a>
+      <a class="btn" href="/app#tab=inbox">[ APPROVAL INBOX ]</a>
+      <a class="btn pink" href="/app#tab=connect">[ CONNECT YOUR AI ]</a>
       <a class="btn" href="https://github.com/AryanKansagara/countersign">[ SOURCE ]</a>
     </div>
     <div class="live" aria-live="polite">
@@ -172,25 +172,24 @@
 
   <section class="panel" id="connect"><div class="frame">
     <div class="label">// CONNECT AN AGENT</div>
-    <h2>Install once. Bring any LLM.</h2>
+    <h2>One URL. One key. Any AI.</h2>
+    <p>Countersign is a remote MCP server. Works with <b>Claude Code</b>, <b>Claude Desktop</b>, <b>claude.ai</b>, <b>Cursor</b>, <b>VS Code</b>, <b>ChatGPT</b> and any agent that speaks MCP.</p>
     <div class="steps">
-      <div><b>Sign in</b><br><span class="dim">With GitHub on the <a href="/app">inbox</a>. New users request access; an approver lets them in.</span></div>
-      <div><b>Request a key</b><br><span class="dim">Pick the collections your agent may touch. A different approver signs off.</span></div>
-      <div><b>Claim it once</b><br><span class="dim">The key is shown exactly once. Revocation is instant.</span></div>
-      <div><b>Connect</b><br><span class="dim">Any MCP client: Claude, Cursor, your own agent.</span></div>
+      <div><b>Sign in</b><br><span class="dim">With GitHub. New users request access; an approver lets them in.</span></div>
+      <div><b>Get an agent key</b><br><span class="dim">Pick what it may touch. Someone else approves. Shown once.</span></div>
+      <div><b>Paste it into your app</b><br><span class="dim">Copy-paste setup for each client on the Connect page.</span></div>
+      <div><b>Approve what matters</b><br><span class="dim">Routine changes apply on their own. Risky ones wait for you.</span></div>
     </div>
-<pre>{
-  "mcpServers": {
-    "countersign": {
-      "type": "http",
-      "url": "<span id="mcpurl">https://…/mcp</span>",
-      "headers": {
-        "x-agent-key": "cs_agent_…",
-        "x-human-key": "cs_human_…"
-      }
-    }
-  }
-}</pre>
+<pre># Claude Code
+claude mcp add --transport http countersign <span class="mcpurl">https://…</span>/mcp --header "x-agent-key: cs_agent_…"
+
+# Cursor · VS Code · any MCP client
+url:     <span class="mcpurl">https://…</span>/mcp
+header:  x-agent-key: cs_agent_…
+
+# ChatGPT · claude.ai (no custom headers): key in the URL
+<span class="mcpurl">https://…</span>/mcp/cs_agent_…</pre>
+    <div class="ctas" style="justify-content:flex-start"><a class="btn pink" href="/app#tab=connect">[ GET SET UP ]</a></div>
     <p class="dim" style="margin-top:12px">Tools: <code>whoami</code> · <code>query</code> · <code>propose_change</code> · <code>proposal_status</code> · <code>request_agent_key</code> · <code>claim_key</code></p>
   </div></section>
 </main>
@@ -303,7 +302,7 @@ addEventListener("click", (e) => {
 });
 
 // ---------- live numbers from the real system ----------
-document.getElementById("mcpurl").textContent = location.origin + "/mcp";
+document.querySelectorAll(".mcpurl").forEach((e) => (e.textContent = location.origin));
 async function stats() {
   try {
     const s = await fetch("/stats").then((r) => r.json());

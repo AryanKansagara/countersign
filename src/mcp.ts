@@ -17,6 +17,14 @@ const APPROVAL_URL = process.env.PUBLIC_URL ?? "http://localhost:8080";
 export function buildServer(c: Ctx, agentKey?: string, humanKey?: string) {
   const server = new McpServer({ name: "countersign", version: "0.1.0" });
   const session = () => resolveSession(c, agentKey, humanKey); // re-resolved per call: policy edits and kill switch apply instantly
+  // The person behind this connection: explicit human key, else the agent key's owner.
+  const me = async () => {
+    if (humanKey) return humanKey;
+    if (!agentKey) throw new Denied(`No key. Sign in at ${APPROVAL_URL}/app and open the Connect tab.`);
+    const a = await authenticate(c, agentKey, "agent");
+    if (!a.owner) throw new Denied("this agent key has no owner; pass x-human-key");
+    return { id: a.owner };
+  };
   const ok = (v: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(v, null, 2) }] });
   const guard = (fn: (...a: any[]) => Promise<unknown>) => async (...a: any[]) => {
     try { return ok(await fn(...a)); }
@@ -44,18 +52,17 @@ export function buildServer(c: Ctx, agentKey?: string, humanKey?: string) {
     description: "Request a new agent key that acts on your behalf, limited to the collections you list. A different person must approve it in the Countersign inbox.",
     inputSchema: { name: z.string().describe("short agent name, a-z 0-9 -"), scopes: z.array(z.string()).describe("collections the agent may touch"), reason: z.string() },
   }, guard(async ({ name, scopes, reason }) => {
-    if (!humanKey) throw new Denied(`No identity. Sign in with GitHub at ${APPROVAL_URL}/app to get access first.`);
-    const r = await requestAgentKey(c, humanKey, name, scopes, reason);
-    return { requestId: String(r._id), status: r.status, next: `An approver must approve it at ${APPROVAL_URL}/app. Then call claim_key with this requestId (the key is shown once).` };
+    const r = await requestAgentKey(c, await me(), name, scopes, reason);
+    return { requestId: String(r._id), status: r.status, next: `Someone else must approve it at ${APPROVAL_URL}/app. Then call claim_key with this requestId (the key is shown once).` };
   }));
 
   server.registerTool("claim_key", {
     description: "Collect an approved agent key. It is shown exactly once.",
     inputSchema: { requestId: z.string() },
   }, guard(async ({ requestId }) => {
-    const human = await authenticate(c, humanKey, "human");
+    const human = await authenticate(c, await me(), "human");
     const k = await claim(c, human._id, requestId);
-    return { ...k, use: "Set it as x-agent-key (remote MCP) or CS_AGENT_KEY (stdio), alongside your human key." };
+    return { ...k, use: `Connect with URL ${APPROVAL_URL}/mcp and header x-agent-key, or URL ${APPROVAL_URL}/mcp/<key> for clients without header support.` };
   }));
 
   server.registerTool("query", {

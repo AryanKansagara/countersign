@@ -31,6 +31,7 @@ export interface Identity {
   tenantId: string;
   role?: string;               // humans: "support" | "approver" | "admin"
   scopes?: string[];           // agents: collections the agent may ever touch
+  owner?: string;              // agents: the human this agent acts for by default
   keyHash: string;             // sha256 of API key
   disabled?: boolean;
 }

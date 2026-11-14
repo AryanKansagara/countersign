@@ -78,7 +78,7 @@ Local (stdio), e.g. Claude Desktop or Cursor:
 }
 ```
 
-Remote (streamable HTTP): `POST https://<host>/mcp` with headers `x-agent-key` and `x-human-key`.
+Remote (streamable HTTP): `https://<host>/mcp` with one header, `x-agent-key`. For clients without custom headers (ChatGPT, claude.ai) use `https://<host>/mcp/<agent key>`. Copy-paste setup for Claude Code, Claude Desktop, claude.ai, Cursor, VS Code and ChatGPT is on the **Connect your AI** tab of the app.
 
 Tools: `whoami`, `query`, `propose_change`, `proposal_status`, `request_agent_key`, `claim_key`.
 

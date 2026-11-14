@@ -96,6 +96,15 @@
   .keybox { font-family:"Space Mono", monospace; background:#06021a; border:1px solid var(--mint); color:var(--mint); padding:12px; border-radius:8px; word-break:break-all; margin:8px 0; }
   .banner { background:rgba(255,93,120,.12); border:1px solid var(--red); color:#ffd0d8; border-radius:10px; padding:10px 14px; margin-bottom:16px; }
   .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:10px 16px; border-radius:10px; display:none; z-index:20; max-width:90vw; }
+  .clients { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .clients button { padding:7px 14px; }
+  .clients button[aria-pressed="true"] { background:var(--mint); color:#0b0420; border-color:var(--mint); font-weight:600; }
+  pre.snip { position:relative; margin:0; padding:14px 16px; background:#06021a; border:1px solid var(--line); border-radius:10px; color:#d9fff2; font:13px/1.5 "Space Mono", monospace; white-space:pre-wrap; word-break:break-all; }
+  .step { display:flex; gap:14px; }
+  .step .n { flex:none; width:30px; height:30px; border-radius:50%; background:var(--panel2); border:1px solid var(--mint); color:var(--mint); display:grid; place-items:center; font-weight:700; font-family:"Space Mono", monospace; }
+  .step .body { flex:1; min-width:0; }
+  .step h2 { margin-top:2px; }
+  .prompts li { margin:4px 0; }
   label.chk { display:inline-flex; gap:6px; align-items:center; }
 </style>
 </head>
@@ -103,7 +112,8 @@
 <header>
   <a class="brand" href="/">✍️ COUNTERSIGN</a>
   <nav class="tabs" role="tablist" id="tabs" hidden>
-    <button role="tab" data-tab="inbox" aria-selected="true">Needs approval<span class="count" id="n-pending" hidden></span></button>
+    <button role="tab" data-tab="connect" aria-selected="true">Connect your AI</button>
+    <button role="tab" data-tab="inbox" aria-selected="false">Needs approval<span class="count" id="n-pending" hidden></span></button>
     <button role="tab" data-tab="activity" aria-selected="false">Activity</button>
     <button role="tab" data-tab="keys" aria-selected="false">Keys &amp; access</button>
     <button role="tab" data-tab="audit" aria-selected="false">Audit log</button>
@@ -127,7 +137,7 @@ let ME = null, MODE = null, es = null;
 const qd = new URLSearchParams(location.search).get("demo");
 if (qd && DEMO[qd]) { localStorage.setItem("cs_demo_key", DEMO[qd].key); history.replaceState(null, "", location.pathname + location.hash); }
 let demoKey = localStorage.getItem("cs_demo_key");
-let tab = location.hash.startsWith("#tab=") ? location.hash.slice(5) : "inbox";
+let tab = location.hash.startsWith("#tab=") ? location.hash.slice(5) : location.hash.length > 1 ? "inbox" : "connect";
 let selected = location.hash.length > 1 && !location.hash.startsWith("#tab=") ? location.hash.slice(1) : null;
 let filter = "all";
 const isApprover = () => ["approver", "admin"].includes(ME?.role);
@@ -305,6 +315,7 @@ async function show(t, live) {
   document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === t));
   updateCount();
   try {
+    if (t === "connect" && !live) await viewConnect();
     if (t === "inbox") await viewInbox();
     if (t === "activity") await viewActivity();
     if (t === "keys" && !live) await viewKeys();
@@ -315,6 +326,80 @@ async function updateCount() {
   const ps = await api("proposals").catch(() => []);
   const n = ps.filter((p) => p.status === "pending").length;
   $("n-pending").hidden = !n; $("n-pending").textContent = n;
+}
+
+
+// ----- Connect your AI -----
+const CLIENTS = {
+  "Claude Code": { how: "Run this in your terminal:", snip: (u, k) => `claude mcp add --transport http countersign ${u}/mcp --header "x-agent-key: ${k}"` },
+  "Claude Desktop": { how: "Settings → Developer → Edit config, add this to <code>claude_desktop_config.json</code>, then restart Claude:", snip: (u, k) => JSON.stringify({ mcpServers: { countersign: { command: "npx", args: ["-y", "mcp-remote", `${u}/mcp`, "--header", `x-agent-key:${k}`] } } }, null, 2) },
+  "claude.ai": { how: "Settings → Connectors → <b>Add custom connector</b>. Paste this as the URL (it contains your key, so keep it private):", snip: (u, k) => `${u}/mcp/${k}` },
+  "Cursor": { how: "Cursor Settings → MCP → <b>Add new MCP server</b>, or add to <code>~/.cursor/mcp.json</code>:", snip: (u, k) => JSON.stringify({ mcpServers: { countersign: { url: `${u}/mcp`, headers: { "x-agent-key": k } } } }, null, 2) },
+  "VS Code": { how: "Add to <code>.vscode/mcp.json</code> in your project (GitHub Copilot agent mode):", snip: (u, k) => JSON.stringify({ servers: { countersign: { type: "http", url: `${u}/mcp`, headers: { "x-agent-key": k } } } }, null, 2) },
+  "ChatGPT": { how: "Settings → Apps &amp; Connectors → Advanced → turn on <b>Developer mode</b> → <b>Create</b>. Use this as the MCP server URL with <b>No authentication</b> (the URL contains your key, so keep it private):", snip: (u, k) => `${u}/mcp/${k}` },
+  "Any agent": { how: "Countersign speaks MCP over Streamable HTTP. Point any MCP client or SDK at the endpoint with one header:", snip: (u, k) => `URL:     ${u}/mcp\nHeader:  x-agent-key: ${k}\n\n# no header support? put the key in the path:\n${u}/mcp/${k}` },
+};
+let client = localStorage.getItem("cs_client") || "Claude Code";
+const DEMO_AGENT = { maple: "cs_agent_maple_support", north: "cs_agent_north_support" };
+
+async function viewConnect() {
+  const fresh = sessionStorage.getItem("cs_new_key");
+  const demo = MODE === "demo" ? DEMO_AGENT[ME.tenantId] : null;
+  const key = fresh || demo || "";
+  $("view").innerHTML = `
+    <h1>Connect your AI</h1>
+    <p class="sub">Countersign is an <b>MCP server</b>. Add it to Claude, Cursor, ChatGPT or your own agent with a single key. Your AI can then read your data and <b>propose</b> changes; anything risky waits for a human in <a href="#tab=inbox" data-go="inbox">Needs approval</a>.</p>
+
+    <div class="card step"><div class="n">1</div><div class="body">
+      <h2>Your agent key</h2>
+      ${demo && !fresh ? `<p class="small dim">Demo mode: this is the demo agent <b>support-bot</b>, which acts for <b>${ME.tenantId === "maple" ? "Alice" : "Nora"}</b>. Real users request their own key.</p>` : ""}
+      ${fresh ? `<p class="small" style="color:var(--mint)">Using the key you just collected. Save it somewhere safe; it won't be shown again.</p>` : ""}
+      <div class="row"><input id="ck" value="${esc(key)}" placeholder="Paste your agent key (cs_agent_…)" style="flex:1;min-width:280px;font-family:'Space Mono',monospace" aria-label="Agent key"><button id="ctest">Test connection</button></div>
+      <div id="cres" class="small" style="margin-top:8px"></div>
+      ${!key ? `<p class="small dim" style="margin-top:10px">Don't have one? <a href="#tab=keys" data-go="keys">Request an agent key</a>: pick what it may touch, someone else approves it, then you collect it once.</p>` : ""}
+    </div></div>
+
+    <div class="card step"><div class="n">2</div><div class="body">
+      <h2>Add it to your app</h2>
+      <div class="clients" role="tablist">${Object.keys(CLIENTS).map((n) => `<button aria-pressed="${n === client}" data-client="${esc(n)}">${esc(n)}</button>`).join("")}</div>
+      <p class="small" id="chow"></p>
+      <pre class="snip" id="csnip"></pre>
+      <div class="actions"><button id="ccopy" class="primary">Copy</button><span class="dim small">Every call is checked against your role on every request. Revoking the key cuts the agent off instantly.</span></div>
+    </div></div>
+
+    <div class="card step"><div class="n">3</div><div class="body">
+      <h2>Try it</h2>
+      <p class="small dim">Ask your AI something like:</p>
+      <ul class="prompts">
+        <li>“<b>Who am I in Countersign and what can I change?</b>” <span class="dim small">→ shows your exact permissions</span></li>
+        <li>“<b>Show me customers in Ontario.</b>” <span class="dim small">→ sensitive fields come back masked</span></li>
+        <li>“<b>Upgrade customer MAPLE-1003 to the plus tier.</b>” <span class="dim small">→ small change, applied automatically</span></li>
+        <li>“<b>Assign all cold leads to me.</b>” <span class="dim small">→ 12 records, waits for approval here</span></li>
+        <li>“<b>Delete all the old leads.</b>” <span class="dim small">→ watch it get blocked</span></li>
+      </ul>
+    </div></div>`;
+  const render = () => {
+    const k = $("ck").value.trim() || "YOUR_AGENT_KEY";
+    $("chow").innerHTML = CLIENTS[client].how;
+    $("csnip").textContent = CLIENTS[client].snip(location.origin, k);
+  };
+  render();
+  $("ck").oninput = render;
+  document.querySelectorAll("[data-client]").forEach((b) => b.onclick = () => { client = b.dataset.client; localStorage.setItem("cs_client", client); document.querySelectorAll("[data-client]").forEach((x) => x.setAttribute("aria-pressed", x === b)); render(); });
+  document.querySelectorAll("[data-go]").forEach((a) => a.onclick = (e) => { e.preventDefault(); show(a.dataset.go); });
+  $("ccopy").onclick = () => navigator.clipboard.writeText($("csnip").textContent).then(() => toast("Copied"));
+  $("ctest").onclick = async () => {
+    const k = $("ck").value.trim();
+    if (!k) return toast("Paste an agent key first");
+    $("cres").textContent = "Testing…";
+    try {
+      const r = await fetch("/mcp", { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "x-agent-key": k },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "whoami", arguments: {} } }) }).then((r) => r.json());
+      const out = JSON.parse(r.result.content[0].text);
+      if (out.denied) throw new Error(out.denied);
+      $("cres").innerHTML = `<span style="color:var(--mint)">✓ Connected.</span> This key is <b>${esc(person(out.agent))}</b> acting for <b>${esc(person(out.onBehalfOf))}</b> at ${esc(BANKS[out.tenant] ?? out.tenant)}. It can read ${out.collections.filter((c) => c.read).map((c) => esc(c.collection)).join(", ")} and propose changes to ${out.collections.filter((c) => c.writeOps.length).map((c) => esc(c.collection)).join(", ")}.`;
+    } catch (e) { $("cres").innerHTML = `<span style="color:var(--red)">✗ ${esc(e.message)}</span>`; }
+  };
 }
 
 // ----- Needs approval -----
@@ -492,8 +577,11 @@ async function renderMine() {
     b.parentElement.remove();
     $("k-" + id).innerHTML = `<div class="keybox">${esc(k.key)}</div>
       <button id="copy-${id}">Copy key</button>
-      <p class="small dim" style="margin-top:10px">Add it to your MCP client: URL <code>${location.origin}/mcp</code>, header <code>x-agent-key</code> = this key, and <code>x-human-key</code> = your own key.</p>`;
+      `;
     $("copy-" + id).onclick = () => navigator.clipboard.writeText(k.key).then(() => toast("Copied"));
+    sessionStorage.setItem("cs_new_key", k.key);
+    $("k-" + id).insertAdjacentHTML("beforeend", `<div class="actions"><button class="primary" id="go-${id}">Set it up in Claude, Cursor or ChatGPT →</button></div>`);
+    $("go-" + id).onclick = () => show("connect");
   });
 }
 

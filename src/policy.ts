@@ -30,7 +30,9 @@ export interface Session {
 // never from anything the model says or anything returned from the data.
 export async function resolveSession(c: Ctx, agentKey: string | undefined, humanKey: Who): Promise<Session> {
   const agent = await authenticate(c, agentKey, "agent");
-  const human = await authenticate(c, humanKey, "human");
+  // One key is enough: an agent key acts for the person it was issued to. Their role and
+  // revocation are re-checked live on every call. An explicit human key can still override.
+  const human = await authenticate(c, humanKey ?? (agent.owner ? { id: agent.owner } : undefined), "human");
   if (agent.tenantId !== human.tenantId) throw new Denied("agent and human belong to different tenants");
   await assertNotKilled(c, agent.tenantId, agent._id);
   const policy = await col.policies(c).findOne({ _id: `${human.tenantId}:${human.role}` });

@@ -30,10 +30,10 @@ export async function seed(c: Ctx) {
   for (const n of ["customers", "leads", "transactions"]) await c.data.collection(n).deleteMany({});
 
   const ids: Identity[] = [
-    { _id: "agent:maple-support-bot", kind: "agent", tenantId: "maple", scopes: ["customers", "leads", "transactions"], keyHash: sha256(KEYS.maple.agent) },
+    { _id: "agent:maple-support-bot", kind: "agent", tenantId: "maple", scopes: ["customers", "leads", "transactions"], owner: "human:maple:alice", keyHash: sha256(KEYS.maple.agent) },
     { _id: "human:maple:alice", kind: "human", tenantId: "maple", role: "support", keyHash: sha256(KEYS.maple.alice) },
     { _id: "human:maple:bob", kind: "human", tenantId: "maple", role: "approver", keyHash: sha256(KEYS.maple.bob) },
-    { _id: "agent:north-support-bot", kind: "agent", tenantId: "north", scopes: ["customers", "leads"], keyHash: sha256(KEYS.north.agent) },
+    { _id: "agent:north-support-bot", kind: "agent", tenantId: "north", scopes: ["customers", "leads"], owner: "human:north:nora", keyHash: sha256(KEYS.north.agent) },
     { _id: "human:north:nora", kind: "human", tenantId: "north", role: "support", keyHash: sha256(KEYS.north.nora) },
     { _id: "human:north:omar", kind: "human", tenantId: "north", role: "approver", keyHash: sha256(KEYS.north.omar) },
   ];
