@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Countersign · Approval inbox</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --dim:#8b949e; --green:#3fb950; --red:#f85149; --amber:#d29922; --blue:#58a6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 ui-sans-serif, system-ui, -apple-system, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; gap:12px; align-items:center; padding:12px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:16px; margin:0 12px 0 0; }
+  header .who { color:var(--dim); margin-left:auto; }
+  select, button, input { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:5px 10px; }
+  button { cursor:pointer; } button:hover { border-color:var(--dim); }
+  button.ok { background:#238636; border-color:#2ea043; } button.bad { background:#da3633; border-color:#f85149; }
+  main { display:grid; grid-template-columns: 380px 1fr 360px; height: calc(100vh - 53px); }
+  section { overflow:auto; border-right:1px solid var(--line); }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0; padding:12px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--bg); }
+  .item { padding:10px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .item:hover, .item.sel { background:var(--panel); }
+  .item .t { font-weight:600; }
+  .item .m, .dim { color:var(--dim); font-size:12px; }
+  .badge { display:inline-block; font-size:11px; font-weight:600; padding:1px 7px; border-radius:10px; border:1px solid currentColor; }
+  .pending { color:var(--amber); } .applied { color:var(--green); } .blocked, .failed, .rejected, .expired { color:var(--red); } .rolled_back { color:var(--blue); }
+  .detail { padding:16px 20px; }
+  .reasons li { color:var(--amber); }
+  table { border-collapse:collapse; width:100%; font:12px ui-monospace, SFMono-Regular, Menlo, monospace; margin:8px 0 16px; }
+  td, th { border:1px solid var(--line); padding:4px 8px; text-align:left; vertical-align:top; }
+  .del { background:rgba(248,81,73,.15); } .add { background:rgba(63,185,80,.15); }
+  .actions { display:flex; gap:8px; margin:12px 0; }
+  .ledger .e { padding:8px 14px; border-bottom:1px solid var(--line); font-size:12px; }
+  .ledger .e .ev { font-weight:600; }
+  .ledger .e.alarm { background:rgba(248,81,73,.12); }
+  .ledger .e .h { font-family:ui-monospace,monospace; color:var(--dim); }
+  .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--panel); border:1px solid var(--line); padding:8px 14px; border-radius:8px; display:none; }
+  code { font-family:ui-monospace,monospace; background:var(--panel); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>✍️ Countersign</h1>
+  <select id="key" aria-label="Sign in as">
+    <option value="cs_human_maple_bob">Bob · approver · Maple Credit Union</option>
+    <option value="cs_human_maple_alice">Alice · support · Maple Credit Union</option>
+    <option value="cs_human_north_omar">Omar · approver · Northwind Wealth</option>
+  </select>
+  <button id="kill" class="bad" title="Stop every agent in this tenant immediately">⏻ Kill switch</button>
+  <button id="verify" title="Re-hash the whole ledger">Verify ledger</button>
+  <span class="who" id="who"></span>
+</header>
+<main>
+  <section><h2>Proposals</h2><div id="list"></div></section>
+  <section><div class="detail" id="detail"><p class="dim">Select a proposal to review what the agent wants to change.</p></div></section>
+  <section class="ledger"><h2>Audit ledger · live</h2><div id="ledger"></div></section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+const key = () => $("key").value;
+let selected = location.hash.slice(1) || null;
+let killed = false;
+
+async function api(path, opts = {}) {
+  const r = await fetch("/api/" + path, { ...opts, headers: { "x-human-key": key(), "content-type": "application/json" } });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.denied || j.error || r.statusText);
+  return j;
+}
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = "none", 4000); }
+const ago = (d) => { const s = (Date.now() - new Date(d)) / 1000; return s < 60 ? `${s|0}s ago` : s < 3600 ? `${(s/60)|0}m ago` : new Date(d).toLocaleTimeString(); };
+
+async function loadList() {
+  const me = await api("me");
+  $("who").textContent = `${me.id} · ${me.role}`;
+  const ps = await api("proposals");
+  ps.sort((a, b) => (b.status === "pending") - (a.status === "pending") || new Date(b.createdAt) - new Date(a.createdAt));
+  $("list").innerHTML = ps.map((p) => `
+    <div class="item ${p._id === selected ? "sel" : ""}" data-id="${p._id}">
+      <div><span class="badge ${p.status}">${p.status}</span> <span class="t">${esc(p.op)} · ${esc(p.collection)}</span> <span class="dim">${p.matched || p.expectedCount} rec</span></div>
+      <div class="m">${esc(p.reason)}</div>
+      <div class="m">${esc(p.agentId)} for ${esc(p.onBehalfOf)} · ${ago(p.createdAt)}</div>
+    </div>`).join("") || `<p class="dim" style="padding:16px">No proposals yet.</p>`;
+  document.querySelectorAll(".item").forEach((el) => el.onclick = () => { selected = el.dataset.id; location.hash = selected; loadList(); loadDetail(); });
+  const k = await api("killswitch");
+  killed = !!k?.tenants?.includes(me.tenantId);
+  $("kill").textContent = killed ? "⏻ Agents STOPPED · resume" : "⏻ Kill switch";
+}
+
+function diffTable(diff) {
+  if (!diff.length) return "";
+  const keys = [...new Set(diff.flatMap((d) => Object.keys({ ...(d.before || {}), ...(d.after || {}) })))].filter((k) => k !== "_id");
+  const changed = new Set(keys.filter((k) => diff.some((d) => JSON.stringify(d.before?.[k]) !== JSON.stringify(d.after?.[k]))));
+  const show = keys.filter((k) => changed.has(k) || ["name", "customerNo", "company", "status"].includes(k)).slice(0, 8);
+  const cell = (d, k) => {
+    if (!changed.has(k)) return `<td>${esc(JSON.stringify(d.before?.[k] ?? d.after?.[k]))}</td>`;
+    return `<td>${d.before ? `<div class="del">− ${esc(JSON.stringify(d.before[k]))}</div>` : ""}${d.after ? `<div class="add">+ ${esc(JSON.stringify(d.after[k]))}</div>` : `<div class="del">deleted</div>`}</td>`;
+  };
+  return `<table><tr>${show.map((k) => `<th>${esc(k)}</th>`).join("")}</tr>${diff.map((d) => `<tr>${show.map((k) => cell(d, k)).join("")}</tr>`).join("")}</table>`;
+}
+
+async function loadDetail() {
+  if (!selected) return;
+  let d;
+  try { d = await api("proposals/" + selected); } catch (e) { $("detail").innerHTML = `<p class="dim">${esc(e.message)}</p>`; return; }
+  const p = d.proposal;
+  $("detail").innerHTML = `
+    <h3 style="margin-top:0"><span class="badge ${p.status}">${p.status}</span> ${esc(p.op)} on <code>${esc(p.collection)}</code></h3>
+    <p><b>Why:</b> ${esc(p.reason)}</p>
+    <p class="dim">Agent <code>${esc(p.agentId)}</code> acting for <code>${esc(p.onBehalfOf)}</code> · policy v${p.policyVersion} · expires ${new Date(p.expiresAt).toLocaleTimeString()}</p>
+    <p><b>Dry run:</b> filter matches <b>${p.dryRun.matched}</b> record(s); agent expected <b>${p.expectedCount}</b>.</p>
+    ${p.risk.reasons.length ? `<p><b>Flagged because:</b></p><ul class="reasons">${p.risk.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : `<p class="dim">Within auto-approve policy.</p>`}
+    <details><summary class="dim">Exact request</summary><table><tr><td>filter</td><td>${esc(JSON.stringify(p.filter))}</td></tr><tr><td>update</td><td>${esc(JSON.stringify(p.update ?? p.document))}</td></tr><tr><td>approval hash</td><td>${esc(p.hash)}</td></tr></table></details>
+    <div class="actions">
+      ${p.status === "pending" ? `<button class="ok" data-a="approve">Approve & apply</button><button class="bad" data-a="reject">Reject</button>` : ""}
+      ${p.status === "applied" ? `<button data-a="rollback">↶ Roll back</button>` : ""}
+    </div>
+    ${p.result ? `<p><b>Result:</b> <code>${esc(JSON.stringify(p.result))}</code></p>` : ""}
+    <h4>Change preview</h4>${diffTable(d.diff)}
+    <h4>History</h4>${d.ledger.map((e) => `<div class="dim">#${e.seq} ${esc(e.event)} by ${esc(e.actor)} · ${new Date(e.at).toLocaleTimeString()}</div>`).join("")}`;
+  document.querySelectorAll("[data-a]").forEach((b) => b.onclick = async () => {
+    try { const r = await api(`proposals/${selected}/${b.dataset.a}`, { method: "POST", body: "{}" }); toast(`${b.dataset.a}: ${r.status}${r.result?.error ? " · " + r.result.error : ""}`); }
+    catch (e) { toast("⛔ " + e.message); }
+    loadList(); loadDetail();
+  });
+}
+
+function ledgerRow(e) {
+  const alarm = e.event.startsWith("alarm") || e.event.endsWith("blocked") || e.event.endsWith("failed");
+  return `<div class="e ${alarm ? "alarm" : ""}"><span class="ev">${esc(e.event)}</span> <span class="dim">#${e.seq} · ${new Date(e.at).toLocaleTimeString()}</span><br>${esc(e.actor)}${e.data?.reason ? " · " + esc(e.data.reason) : ""}${e.data?.why ? " · " + esc(e.data.why) : ""}<br><span class="h">${e.hash.slice(0, 16)}… ← ${e.prevHash.slice(0, 8)}…</span></div>`;
+}
+async function loadLedger() { $("ledger").innerHTML = (await api("ledger?limit=60")).map(ledgerRow).join(""); }
+
+$("verify").onclick = async () => { const v = await api("ledger/verify"); toast(v.ok ? `✅ Ledger intact · ${v.entries} entries chained` : `⛔ Tampering detected at entry #${v.brokenAt}: ${v.why}`); };
+$("kill").onclick = async () => { try { await api("killswitch", { method: "POST", body: JSON.stringify({ on: !killed }) }); toast(killed ? "Agents resumed" : "All agents in this tenant stopped"); loadList(); } catch (e) { toast("⛔ " + e.message); } };
+$("key").onchange = () => { selected = null; $("detail").innerHTML = ""; refresh(); };
+
+let es;
+function listen() {
+  es?.close();
+  es = new EventSource("/api/events?key=" + encodeURIComponent(key()));
+  es.addEventListener("ledger", (m) => { const e = JSON.parse(m.data); $("ledger").insertAdjacentHTML("afterbegin", ledgerRow(e)); loadList(); if (selected && String(e.proposalId) === selected) loadDetail(); });
+}
+
+function refresh() { listen(); loadList().catch((e) => toast(e.message)); loadLedger().catch(() => {}); loadDetail(); }
+refresh();
+</script>
+</body>
+</html>

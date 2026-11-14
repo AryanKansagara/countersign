@@ -1,0 +1,28 @@
+{
+  "name": "countersign",
+  "version": "0.1.0",
+  "description": "Pull requests for agent data changes: an MCP write gateway for MongoDB Atlas",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "mcp": "tsx src/mcp.ts",
+    "seed": "tsx src/seed.ts",
+    "attacks": "tsx attacks/run.ts",
+    "test": "tsx test/selftest.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "mongodb": "^7.9.0",
+    "tsx": "^4.23.15",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "mongodb-memory-server": "^11.3.0",
+    "typescript": "^7.0.2"
+  }
+}
